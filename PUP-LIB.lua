@@ -550,6 +550,7 @@ end
 -----------------------------------------
 -- AutoDeploy
 -----------------------------------------
+
 local function has_valid_target() -- TODO: Unused
     local mob = windower.ffxi.get_mob_by_target and windower.ffxi.get_mob_by_target('t')
     return mob and mob.valid and (mob.hpp or 100) > 0
@@ -826,6 +827,10 @@ local function resolve_gear(state)
     local set = {}
     local name = 'base'
     local now = os.time()
+    local playerStatus = state.playerStatus
+    local petStatus = state.petStatus
+    local playerEngaged = playerStatus == 'Engaged'
+    local petEngaged = petStatus == 'Engaged'
 
     -- Select active matrix table
     local currentMatrix = safe_get(_G, 'matrices', state.matrixName)
@@ -846,19 +851,22 @@ local function resolve_gear(state)
     -------------------------------------------------
     if currentMatrix then
         local layer = state.layer or 'Normal'
-        local zoneGroup = (state.playerStatus == 'Engaged') and 'engaged' or 'idle'
+        local zoneGroup = (playerEngaged or petEngaged) and 'engaged' or 'idle'
 
-        if state.playerStatus == 'Engaged' and state.petStatus == 'Engaged' then
+        debug_chat('Gear Resolver - Player/Pet Status:' ..
+            playerStatus .. '/' .. petStatus)
+
+        if playerEngaged and petEngaged then -- Both engaged
             set = combine_safe(set,
                 safe_get(currentMatrix, zoneGroup, 'masterPet', layer) or
                 safe_get(currentMatrix, zoneGroup, 'masterPet', 'Normal'))
             name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.masterPet.' .. layer
-        elseif state.playerStatus == 'Engaged' then
+        elseif playerEngaged and not petEngaged then -- Player Engaged, Pet Idle
             set = combine_safe(set,
                 safe_get(currentMatrix, zoneGroup, 'master', layer) or
                 safe_get(currentMatrix, zoneGroup, 'master', 'Normal'))
             name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.master.' .. layer
-        elseif state.petStatus == 'Engaged' then
+        elseif not playerEngaged and petEngaged then -- Player Idle, Pet Engaged
             set = combine_safe(set,
                 safe_get(currentMatrix, zoneGroup, 'pet', layer) or safe_get(currentMatrix, zoneGroup, 'pet', 'Normal'))
             name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.pet.' .. layer
@@ -875,7 +883,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
     if petMatrix and state.petMatrixCombo and state.petMatrixCombo ~= 'None' then
-        local zoneGroup = (state.playerStatus == 'Engaged') and 'engaged' or 'idle'
+        local zoneGroup = (playerEngaged or petEngaged) and 'engaged' or 'idle'
         local combo = state.petMatrixCombo
         local layer = state.petMatrixLayer or 'Normal'
 
@@ -947,7 +955,7 @@ local function equip_and_update()
     hud_update()
 end
 
-local function status_change(new, old)
+function status_change(new, old)
     current_state.playerStatus = new
     set_opacity(new == 'Engaged')
 
@@ -974,10 +982,10 @@ function pet_status_change(new, old)
     local shorthandFrame = PUP_FRAME_MAP[petFrame]
 
     if shorthandHead and shorthandFrame then
-        local debugmsg = "[PUPTrix] - Pet Status Changed:" ..
-            shorthandHead .. "_" .. shorthandFrame .. " - Status:" .. new
-        debug_chat(debugmsg)
         current_state.petType = shorthandHead .. "_" .. shorthandFrame
+        local debugmsg = "[PUPTrix] - Pet Status Changed: " ..
+            shorthandHead .. "_" .. shorthandFrame .. " - Status: " .. new
+        debug_chat(debugmsg)
     end
 
     equip_and_update()
@@ -990,13 +998,15 @@ function pet_change(p, gain)
             local petFrame = p.frame
             local shorthandHead = PUP_HEAD_MAP[petHead]
             local shorthandFrame = PUP_FRAME_MAP[petFrame]
+            local petTypeCombo = shorthandHead .. "_" .. shorthandFrame
 
             current_state.petStatus = p and p.status or 'Idle'
 
             if shorthandHead and shorthandFrame then
-                local debugmsg = "[PUPTrix] - Pet Changed:" .. shorthandHead .. "_" .. shorthandFrame
+                local debugmsg = "[PUPTrix] - Pet Changed: " .. petTypeCombo
                 debug_chat(debugmsg)
-                current_state.petType = shorthandHead .. "_" .. shorthandFrame
+                current_state.petType = petTypeCombo
+                current_state.petMatrixCombo = petTypeCombo
             end
         else -- Pet is lost/deactivated
             current_state.petStatus = 'None'
