@@ -322,6 +322,14 @@ local function puppet_is_engaged() -- Returns true if the automaton is already e
     return false
 end
 
+local function get_pet_ws_set()
+    local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
+    if not currentMatrix or not currentMatrix.petMatrix or not currentMatrix.petMatrix.weaponskills then
+        return nil
+    end
+    return currentMatrix.petMatrix.weaponskills[current_state.petType]
+end
+
 -----------------------------------------
 -- HUD Setup -- TODO: Move to its own file
 -----------------------------------------
@@ -955,7 +963,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PET ENMITY SET
     -------------------------------------------------
-    if auto_enmity_state.active and petEngaged or playerEngaged then
+    if auto_enmity_state.active and (petEngaged or playerEngaged) then
         set = combine_safe(set, sets.pet.enmity)
         name = name .. '+ sets.pet.enmity'
     end
@@ -1164,6 +1172,40 @@ function precast(spell, action, spellMap, eventArgs)
 
         return
     end
+
+    ------------------------------------------------------------
+    -- AutoPetWS Edge Case: Prime Pet WS gear before Deploy to avoid race condition with pet status
+    ------------------------------------------------------------
+    if spell and spell.english == 'Deploy' then
+        local pettp = (pet and pet.isvalid and pet.tp) or 0
+        local playertp = (player and player.tp) or 0
+        local petInhibitor = pet.attachments.inhibitor or pet.attachments["inhibitor II"]
+
+        if petInhibitor and playertp >= 899
+        then
+            return
+        end
+
+        if current_state.autoPetWSToggle and pettp >= PET_WS_TP_THRESHOLD then
+            local wsSet = get_pet_ws_set()
+            if wsSet then
+                -- Equip immediately so gear is on before Deploy executes
+                equip(wsSet)
+
+                current_state.petStatus = 'Engaged'
+                current_state.autoPetWS.active = true
+                current_state.autoPetWS.timer = os.time() + PET_WS_ACTIVE_WINDOW
+
+
+                debug_chat(string.format(
+                    "[AutoPetWS] Primed on Deploy (TP=%d >= %d). Equipping WS set before Deploy.",
+                    pettp, PET_WS_TP_THRESHOLD
+                ))
+            else
+                debug_chat("[AutoPetWS] Deploy prime: no WS set found for petType=" .. tostring(current_state.petType))
+            end
+        end
+    end
 end
 
 function midcast(spell, action, spellMap, eventArgs)
@@ -1215,7 +1257,7 @@ function aftercast(spell)
         if not spell.interrupted then
             local now = os.time()
             current_state.lastRepairUsed = now
-            current_state.lastRepairAttempt = now 
+            current_state.lastRepairAttempt = now
             debug_chat(string.format('[AutoRepair] Repair detected. Cooldown synced at %.2f', now))
         else
             debug_chat('[AutoRepair] Repair was interrupted; cooldown NOT updated.')
@@ -1390,7 +1432,7 @@ if not prerender_registered and windower and windower.register_event then
         -- if now < current_state.autoPetWS.lockout then return end
 
         -- Enter Pet WS Mode
-        if not current_state.autoPetWS.active and pettp >= PET_WS_TP_THRESHOLD then
+        if not current_state.autoPetWS.active and pettp >= PET_WS_TP_THRESHOLD and puppet_is_engaged() then
             if petInhibitor and playertp >= 899 then
                 -- When Inhibitors are equipped puppet will not WS if player has > 899 TP, so we do not equip the pet WS set
                 return
@@ -1404,7 +1446,7 @@ if not prerender_registered and windower and windower.register_event then
         end
 
         -- Exit after timer or TP drop or pet leaving combat
-        if current_state.autoPetWS.active and pettp < PET_WS_TP_THRESHOLD or now > current_state.autoPetWS.timer then
+        if current_state.autoPetWS.active and (pettp < PET_WS_TP_THRESHOLD or now > current_state.autoPetWS.timer) then
             debug_chat("[AutoPetWS] Pet WS window ended - reverting gear")
             current_state.autoPetWS.active = false
             current_state.autoPetWS.lockout = now -- No lockout time applied in this scenario
@@ -1548,7 +1590,7 @@ function self_command(cmd)
             windower.add_to_chat(122, '[AutoDeploy] ' .. (current_state.autoDeploy and 'On' or 'Off'))
         elseif which == 'autopetenmity' then
             -- Clear any pending when disabling
-            if not current_state.autoManeuver then
+            if not current_state.autoEnmity then
                 auto_enmity_state = {
                     active = false,
                     ability = nil,
@@ -1559,7 +1601,7 @@ function self_command(cmd)
             windower.add_to_chat(122, '[AutoPetEnmity] ' .. (current_state.autoEnmity and 'On' or 'Off'))
         elseif which == 'autopetws' then
             -- Clear any pending when disabling
-            if not current_state.autoManeuver then
+            if not current_state.autoPetWSToggle then
                 autoPetWS = {
                     active = false,
                     timer = 0,
