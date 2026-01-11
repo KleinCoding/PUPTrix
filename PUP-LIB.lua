@@ -87,13 +87,13 @@ local current_opacity         = HUD_OPACITY_ACTIVE
 local opacity_target          = HUD_OPACITY_ACTIVE
 
 -- AutoRepair values
-local PET_HP_UPDATE_INTERVAL  = 1.0 -- once per second
-local AUTO_REPAIR_THRESHHOLDS = { 0, 20, 40, 55, 70 }
-local BASE_REPAIR_COOLDOWN    = 90  -- seconds
-local UPGRADE_REDUCTION       = 3   -- seconds per upgrade level
+local PET_HP_UPDATE_INTERVAL  = 1.0                   -- once per second
+local AUTO_REPAIR_THRESHHOLDS = { 0, 20, 40, 55, 70 } -- TODO: move to VARs
+local BASE_REPAIR_COOLDOWN    = 90                    -- seconds
+local UPGRADE_REDUCTION       = 3                     -- seconds per upgrade level
 local MAX_UPGRADE_LEVEL       = 5
 local REPAIR_RANGE_YALMS      = 20
-local AUTOREPAIR_SPAM_GUARD   = 3.5 -- seconds
+local AUTOREPAIR_SPAM_GUARD   = 3.5 -- seconds TODO: Move to VARs
 
 -- AutoDeploy values
 local DEPLOY_COOLDOWN         = 5
@@ -105,19 +105,16 @@ local DEPLOY_DELAY            = 2.5
 ------------------------------------------------------------
 -- Pet Enmity Auto Swap State Tracking
 ------------------------------------------------------------
--- // TODOS: Enmity set can get stuck. Need to reset state values when toggling off the feature. Need to reset state values on zone. Maybe when combat ends.
---// Gear seemed to get stuck when ending a HTBF while set was active
 --// Need to track Flashbulb/Strobe cooldown even when feature is off? Otherwise logic assumes the voke/flash are ready when turned on mid combat
---// Need to reset states on player death, pet death, and zone
 local Flashbulb_Timer = 45
 local Strobe_Timer = 30
 local Flashbulb_Recast = 0
 local Strobe_Recast = 0
 local Flashbulb_Time = 0
 local Strobe_Time = 0
-local PET_ENMITY_WINDOW = 3 -- seconds to hold enmity gear
+local PET_ENMITY_WINDOW = 3 -- seconds to hold enmity gear TODO: Move to -VARS file
 
-auto_enmity_state = {
+local auto_enmity_state = {
     active = false,
     ability = nil, -- 'Strobe' or 'Flashbulb'
     timer = 0      -- expiration timestamp
@@ -126,9 +123,9 @@ auto_enmity_state = {
 -----------------------------------------
 -- Pet Weaponskill AutoSwap State Tracking
 -----------------------------------------
-local PET_WS_TP_THRESHOLD = 999 -- configurable trigger TP (e.g. 900/1000)
-local PET_WS_ACTIVE_WINDOW = 4  -- seconds to stay in WS gear before check
-local PET_WS_LOCKOUT = 3        -- seconds after WS before allowing reactivation
+local PET_WS_TP_THRESHOLD = 990 -- configurable trigger TP (e.g. 900/1000) TODO: Move to VARS file
+local PET_WS_ACTIVE_WINDOW = 4  -- seconds to stay in WS gear before check TODO: Move to VARS File
+local PET_WS_LOCKOUT = 3        -- seconds after WS before allowing reactivation TODO: Move to VARS file
 local last_pet_ws_time = 0
 local pet_ws_active = false
 
@@ -150,7 +147,7 @@ local pet_ws_active = false
 -----------------------------------------
 -- State
 -----------------------------------------
-current_state = {                    -- TODO: Break this block into multiple state values. HUD/Player/Pet/Matrix etc
+local current_state = {              -- TODO: Break this block into multiple state values. HUD/Player/Pet/Matrix etc
     -- HUD Values
     hudView                = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
     activeSetName          = 'None', -- Text string of current sets, for HUD display
@@ -188,7 +185,7 @@ current_state = {                    -- TODO: Break this block into multiple sta
     last_pet_hp_update     = 0, -- timestamp of last time script updated petHP value
 
     -- Auto Pet WS Toggle & Stat
-    autoPetWSToggle        = false, -- TODO: Add check for engaged status so it doesnt spam when player and pet are idle
+    autoPetWSToggle        = false,
     autoPetWS              = {
         active = false,
         timer = 0,
@@ -522,13 +519,12 @@ local function check_auto_repair() -- TODO: Oil check is broken, JA block need c
     if hp > th then return end
 
     -- spam guard
-    local now = os.clock()
+    local now = os.time()
     if now - (current_state.lastRepairAttempt or 0) < AUTOREPAIR_SPAM_GUARD then return end
     current_state.lastRepairAttempt = now
 
     -- Cooldown check --
     local cd = get_repair_cooldown()
-    local now = os.clock()
     local elapsed = now - (current_state.lastRepairUsed or 0)
     if elapsed < cd then
         debug_chat(string.format("[AutoRepair] Cooldown active (%.1fs / %.1fs)", elapsed, cd))
@@ -561,7 +557,6 @@ local function check_auto_repair() -- TODO: Oil check is broken, JA block need c
     -- TODO: Add check if player can perform an action (i.e is not already performing an action)
 
     debug_chat(string.format('[AutoRepair] Repair triggered (HP %.1f%% <= %d%%, %.1f yalms)', hp, th, distance))
-    current_state.lastRepairUsed = now
     windower.chat.input('/ja "Repair" <me>')
 end
 
@@ -960,7 +955,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PET ENMITY SET
     -------------------------------------------------
-    if auto_enmity_state.active then
+    if auto_enmity_state.active and petEngaged or playerEngaged then
         set = combine_safe(set, sets.pet.enmity)
         name = name .. '+ sets.pet.enmity'
     end
@@ -972,7 +967,7 @@ local function resolve_gear(state)
         local petWSSet = currentMatrix.petMatrix.weaponskills[current_state.petType]
         if petWSSet then
             set = combine_safe(set, petWSSet)
-            name = name .. '+ sets.pet.weaponskill.' .. current_state.petType
+            name = name .. '+ sets.petMatrix.weaponskills.' .. current_state.petType
         elseif not petWSSet then
             debug_chat('[PUPTrix AutoPetWS]: No matching set found in petmatrix.weaponskills for' ..
                 current_state.petType)
@@ -1215,6 +1210,18 @@ function midcast(spell, action, spellMap, eventArgs)
 end
 
 function aftercast(spell)
+    -- Tracking cooldown for Repair & AutoRepair system
+    if spell and spell.english == 'Repair' then
+        if not spell.interrupted then
+            local now = os.time()
+            current_state.lastRepairUsed = now
+            current_state.lastRepairAttempt = now 
+            debug_chat(string.format('[AutoRepair] Repair detected. Cooldown synced at %.2f', now))
+        else
+            debug_chat('[AutoRepair] Repair was interrupted; cooldown NOT updated.')
+        end
+    end
+
     -- If maneuver was interrupted, re-queue with debounce
     if spell and spell.english and MANEUVER_MAP[spell.english] then
         local el = MANEUVER_MAP[spell.english]
@@ -1362,7 +1369,7 @@ if not prerender_registered and windower and windower.register_event then
                 end
             end
         elseif current_state.autoEnmity
-            and (player.hpp <= 0 or not pet or not pet.isvalid or not puppet_is_engaged) then
+            and (player.hpp <= 0 or not pet or not pet.isvalid) then
             debug_chat("[AutoEnmity] Player / Pet dead or invalid - Enmity Gear Window Closed")
             auto_enmity_state.active = false
             auto_enmity_state.ability = nil
@@ -1375,29 +1382,33 @@ if not prerender_registered and windower and windower.register_event then
 
         -- Auto Pet WS Set Logic
         if not (pet and pet.isvalid and current_state.autoPetWSToggle) then return end
-
-        local tp = pet.tp or 0
+        local petInhibitor = pet.attachments.inhibitor or pet.attachments["inhibitor II"]
+        local pettp = pet.tp or 0
+        local playertp = player.tp or 0
 
         -- Lockout protection -- TODO: Not sure if needed, lockout hurts more than helps
         -- if now < current_state.autoPetWS.lockout then return end
 
         -- Enter Pet WS Mode
-        if not current_state.autoPetWS.active and tp >= PET_WS_TP_THRESHOLD then
+        if not current_state.autoPetWS.active and pettp >= PET_WS_TP_THRESHOLD then
+            if petInhibitor and playertp >= 899 then
+                -- When Inhibitors are equipped puppet will not WS if player has > 899 TP, so we do not equip the pet WS set
+                return
+            end
+
             current_state.autoPetWS.active = true
             current_state.autoPetWS.timer = now + PET_WS_ACTIVE_WINDOW
-            debug_chat(string.format("[AutoPetWS] Pet TP %d >= %d, swapping to WS set", tp, PET_WS_TP_THRESHOLD))
+            debug_chat(string.format("[AutoPetWS] Pet TP %d >= %d, swapping to WS set", pettp, PET_WS_TP_THRESHOLD))
             equip_and_update()
             return
         end
 
-        -- Exit after timer or TP drop
-        if current_state.autoPetWS.active then
-            if tp < PET_WS_TP_THRESHOLD or now > current_state.autoPetWS.timer then
-                debug_chat("[AutoPetWS] Pet WS window ended - reverting gear")
-                current_state.autoPetWS.active = false
-                current_state.autoPetWS.lockout = now + PET_WS_LOCKOUT
-                equip_and_update()
-            end
+        -- Exit after timer or TP drop or pet leaving combat
+        if current_state.autoPetWS.active and pettp < PET_WS_TP_THRESHOLD or now > current_state.autoPetWS.timer then
+            debug_chat("[AutoPetWS] Pet WS window ended - reverting gear")
+            current_state.autoPetWS.active = false
+            current_state.autoPetWS.lockout = now -- No lockout time applied in this scenario
+            equip_and_update()
         end
     end)
 end
@@ -1536,9 +1547,25 @@ function self_command(cmd)
             current_state.autoDeploy = not current_state.autoDeploy
             windower.add_to_chat(122, '[AutoDeploy] ' .. (current_state.autoDeploy and 'On' or 'Off'))
         elseif which == 'autopetenmity' then
+            -- Clear any pending when disabling
+            if not current_state.autoManeuver then
+                auto_enmity_state = {
+                    active = false,
+                    ability = nil,
+                    timer = 0
+                }
+            end
             current_state.autoEnmity = not current_state.autoEnmity
             windower.add_to_chat(122, '[AutoPetEnmity] ' .. (current_state.autoEnmity and 'On' or 'Off'))
         elseif which == 'autopetws' then
+            -- Clear any pending when disabling
+            if not current_state.autoManeuver then
+                autoPetWS = {
+                    active = false,
+                    timer = 0,
+                    lockout = 0
+                }
+            end
             current_state.autoPetWSToggle = not current_state.autoPetWSToggle
             windower.add_to_chat(122, '[AutoPetWS] ' .. (current_state.autoPetWSToggle and 'On' or 'Off'))
         elseif which == 'debug' then

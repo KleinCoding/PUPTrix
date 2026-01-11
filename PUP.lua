@@ -290,7 +290,7 @@ function get_sets()
         Valor_Valor = {},
         Valor_Sharp = {},
         Valor_Harle = {},
-        Sharp_Sharp = {},
+        Sharp_Sharp = customSets.rangerPetWS,
         Soul_Storm = {},
         Spirit_Storm = {},
         Storm_Storm = {},
