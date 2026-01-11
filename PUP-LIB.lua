@@ -22,7 +22,7 @@ local item_use_hook_registered = false
 -----------------------------------------
 -- CONSTS
 -----------------------------------------
-local Towns = {
+local Towns                   = {
     [246] = "Ru'Lude Gardens",
     [236] = "Port Bastok",
     [50]  = "Port Jeuno",
@@ -31,7 +31,7 @@ local Towns = {
     [53]  = "Rabao",
 }
 
-local MANEUVER_MAP = {
+local MANEUVER_MAP            = {
     ["Fire Maneuver"]    = "Fire",
     ["Water Maneuver"]   = "Water",
     ["Wind Maneuver"]    = "Wind",
@@ -43,7 +43,7 @@ local MANEUVER_MAP = {
 }
 
 -- TODO: These are wrong.
-local BLOCKING_DEBUFF_IDS = {
+local BLOCKING_DEBUFF_IDS     = {
     [2] = true,  -- Sleep
     [3] = true,  -- Sleep II
     [4] = true,  -- Sleep III
@@ -57,7 +57,7 @@ local BLOCKING_DEBUFF_IDS = {
     [28] = true, -- Terror
 }
 
-local PUP_HEAD_MAP = {
+local PUP_HEAD_MAP            = {
     ["Harlequin Head"]    = "Harle",
     ["Valoredge Head"]    = "Valor",
     ["Sharpshot Head"]    = "Sharp",
@@ -66,14 +66,14 @@ local PUP_HEAD_MAP = {
     ["Spiritreaver Head"] = "Spirit",
 }
 
-local PUP_FRAME_MAP = {
+local PUP_FRAME_MAP           = {
     ["Harlequin Frame"]  = "Harle",
     ["Valoredge Frame"]  = "Valor",
     ["Sharpshot Frame"]  = "Sharp",
     ["Stormwaker Frame"] = "Storm",
 }
 
-
+-- TODO: Remove old logic for dynamic HUD opacity
 -- HUD Values
 HUD_OPACITY_ACTIVE            = 0.7 -- Full visibility when active
 HUD_OPACITY_IDLE              = 0.2 -- Dimmed opacity when idle/in town
@@ -132,10 +132,6 @@ local PET_WS_LOCKOUT = 3        -- seconds after WS before allowing reactivation
 local last_pet_ws_time = 0
 local pet_ws_active = false
 
--- TODO: Base Sets become part of the Matrix
--- TODO: Automatic matrix swapping based on subjob
--- TODO: Automatic Puppet type determination for Pet Matrix
--- TODO: 'None' Field for Pet Matrix needs to be available, or an off, etc
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
 -- TODO: Remove HUD opacity change smoothing logic
 -- TODO: BLOCKING DEBUFFS. Prevent AutoManeuver, AutoDeploy, AutoRepair when affected by hard CC. Docs say check by name not ID
@@ -167,11 +163,11 @@ current_state = {                    -- TODO: Break this block into multiple sta
 
     -- Matrix & Matrix Layers state
     matrixName             = 'gear_matrix', -- the key in global `matrices` to use
-    layer                  = 'Normal',      -- key for active matrix layer -- TODO: rename matrixLayer
+    matrixLayer            = 'None',        -- key for active matrix layer
 
     -- Pet Matrix & Pet Matrix Layers state --
-    petMatrixCombo         = 'None',   -- Key for active pet type to take from Pet Matrix e.g., "Valor_Valor", "Sharp_Sharp", etc.
-    petMatrixLayer         = 'Normal', -- key for active pet matrix layer
+    petMatrixCombo         = 'None', -- Key for active pet type to take from Pet Matrix e.g., "Valor_Valor", "Sharp_Sharp", etc.
+    petMatrixLayer         = 'None', -- key for active pet matrix layer
 
     -- Custom Layers state
     customLayer            = 'Off', -- active custom set key (sets.layers.CustomLayers.*)
@@ -349,28 +345,42 @@ local hud_settings = {
 local hud = nil
 
 local DynamicLists = {
-    Matrices          = { 'gear_matrix' }, -- keys under global `matrices` (tables)
-    Layers            = { 'Normal' },      -- layers discovered in active matrix
-    PetMatrixCombos   = { 'None' },        -- combos for active matrix
-    PetMatrixLayers   = { 'Normal' },      -- layers for selected combo
-    PetMatrixComboMap = {},                -- { combo -> {layers...} } for active matrix
-    CustomLayers      = { 'Off' },         -- from sets.layers.CustomLayers
-    HudViews          = { 'Full', 'SetsOnly', 'Condensed' },
+    Matrices               = { 'gear_matrix' },
+    MatrixLayers           = { 'None' }, -- MatrixLayer list includes None
+    PetMatrixCombos        = { 'None' },
+    PetMatrixLayers        = { 'None' }, -- PetMatrixLayer list includes None
+    PetMatrixLayersByCombo = {},
+    CustomLayers           = { 'None' },
+    HudViews               = { 'Full', 'SetsOnly', 'Condensed' },
 }
 
-local function fmt_count(cur, list) -- Helper to format counts (Layer (x/y))
-    local tot = #list
-    if tot > 1 then
-        local idx = 1
-        for i, v in ipairs(list) do
-            if v == cur then
-                idx = i; break
-            end
-        end
-        return string.format("%s (%d/%d)", cur or "?", idx, tot)
-    else
-        return cur or (list[1] or "?")
+local function format_count_of_choices(cur, list)
+    if not list or #list == 0 then
+        return tostring(cur or "?")
     end
+
+    local realTotal = #list - 1
+    if realTotal <= 0 then
+        return string.format("%s (0/0)", tostring(cur or "None"))
+    end
+
+    -- Find real index
+    local idx = nil
+    for i, v in ipairs(list) do
+        if v == cur then
+            idx = i
+            break
+        end
+    end
+
+    -- Not found or explicitly None
+    if not idx or cur == 'None' then
+        return string.format("None (0/%d)", realTotal)
+    end
+
+    -- Shift down because index 1 is None
+    local displayIdx = idx - 1
+    return string.format("%s (%d/%d)", cur, displayIdx, realTotal)
 end
 
 
@@ -406,9 +416,11 @@ local function hud_update()
         -- Condensed HUD
         -------------------------------------------------
     elseif current_state.hudView == 'Condensed' then
-        table.insert(lines, align_label("MatrixLayer", fmt_count(current_state.layer, DynamicLists.Layers)))
         table.insert(lines,
-            align_label("PetMatrixLayer", fmt_count(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)))
+            align_label("MatrixLayer", format_count_of_choices(current_state.matrixLayer, DynamicLists.MatrixLayers)))
+        table.insert(lines,
+            align_label("PetMatrixLayer",
+                format_count_of_choices(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)))
         table.insert(lines, align_label("AutoDeploy", current_state.autoDeploy and 'On' or 'Off'))
 
         -- Only show AutoManeuver in Condensed view if it's enabled
@@ -439,17 +451,23 @@ local function hud_update()
                 string.format("%s (%d/%d)", current_state.matrixName or "?", matrix_idx, #DynamicLists.Matrices)))
 
         -- Matrix
-        table.insert(lines, align_label("MatrixLayer", fmt_count(current_state.layer, DynamicLists.Layers)))
+        table.insert(lines,
+            align_label("MatrixLayer", format_count_of_choices(current_state.matrixLayer, DynamicLists.MatrixLayers)))
 
         -- Pet Matrix
-        local petMatrixDisplay = (current_state.petMatrixCombo and current_state.petMatrixCombo ~= '' and current_state.petMatrixCombo ~= 'None')
-            and current_state.petMatrixCombo
-            or 'None'
-        table.insert(lines, align_label("PetMatrix", petMatrixDisplay))
+        local petMatrixDisplay =
+            (current_state.petMatrixCombo and current_state.petMatrixCombo ~= '' and current_state.petMatrixCombo) or
+            'None'
 
+        table.insert(lines, align_label(
+            "PetMatrix",
+            format_count_of_choices(petMatrixDisplay, DynamicLists.PetMatrixCombos)
+        ))
+
+        -- Pet Matrix Layer
         local petMatrixLayerDisplay = 'None'
         if petMatrixDisplay ~= 'None' and DynamicLists.PetMatrixLayers and #DynamicLists.PetMatrixLayers > 0 then
-            petMatrixLayerDisplay = fmt_count(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)
+            petMatrixLayerDisplay = format_count_of_choices(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)
         end
         table.insert(lines, align_label("PetMatrixLayer", petMatrixLayerDisplay))
 
@@ -724,32 +742,38 @@ local function collect_matrix_layers_from(groupNode, collector)
 end
 
 local function build_layers()
-    local fallback = { 'Normal', 'Acc', 'TP', 'Regen', 'Ranged' }
     local layersSet = {}
     local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
+
     if currentMatrix then
         collect_matrix_layers_from(currentMatrix.engaged, layersSet)
         collect_matrix_layers_from(currentMatrix.idle, layersSet)
     end
-    local layers = ordered_keys(layersSet)
-    DynamicLists.Layers = (#layers > 0) and layers or fallback
 
-    -- Ensure current layer is valid
+    local layers = ordered_keys(layersSet)
+
+    -- Always inject "None" at the top; do NOT inject "Normal"
+    DynamicLists.MatrixLayers = { 'None' }
+    for _, v in ipairs(layers) do
+        DynamicLists.MatrixLayers[#DynamicLists.MatrixLayers + 1] = v
+    end
+
+    -- Validate current selection
     local valid = false
-    for _, v in ipairs(DynamicLists.Layers) do
-        if v == current_state.layer then
+    for _, v in ipairs(DynamicLists.MatrixLayers) do
+        if v == current_state.matrixLayer then
             valid = true
             break
         end
     end
-    if not valid then current_state.layer = DynamicLists.Layers[1] end
+    if not valid then current_state.matrixLayer = 'None' end
 end
 
 -- Build PetMatrix combos/layers from the active matrix
 local function build_pet_matrix_lists()
     DynamicLists.PetMatrixCombos = { 'None' }
-    DynamicLists.PetMatrixComboMap = {}
-    DynamicLists.PetMatrixLayers = { 'Normal' }
+    DynamicLists.PetMatrixLayersByCombo = {}
+    DynamicLists.PetMatrixLayers = { 'None' }
 
     local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
@@ -769,17 +793,40 @@ local function build_pet_matrix_lists()
                     end
                 end
                 table.sort(layerKeys)
-                DynamicLists.PetMatrixComboMap[combo] = (#layerKeys > 0) and layerKeys or { 'Normal' }
+
+                -- Always include None for each combo
+                local finalLayers = { 'None' }
+                for _, lk in ipairs(layerKeys) do
+                    finalLayers[#finalLayers + 1] = lk
+                end
+
+                DynamicLists.PetMatrixLayersByCombo[combo] = finalLayers
             end
         end
     end
 
     local combos = ordered_keys(combosSet)
-    if #combos > 0 then DynamicLists.PetMatrixCombos = combos end
+
+    -- Always inject "None" at the top (do not overwrite with a list that lacks None)
+    for _, v in ipairs(combos) do
+        if v ~= 'None' then
+            DynamicLists.PetMatrixCombos[#DynamicLists.PetMatrixCombos + 1] = v
+        end
+    end
+
+    -- Validate current selection (so state doesn't get stuck on an invalid value)
+    local ok = false
+    for _, v in ipairs(DynamicLists.PetMatrixCombos) do
+        if v == current_state.petMatrixCombo then
+            ok = true; break
+        end
+    end
+    if not ok then current_state.petMatrixCombo = 'None' end
 
     -- Update current combo's layers
-    local layers = DynamicLists.PetMatrixComboMap[current_state.petMatrixCombo] or { 'Normal' }
+    local layers = DynamicLists.PetMatrixLayersByCombo[current_state.petMatrixCombo] or { 'None' }
     DynamicLists.PetMatrixLayers = layers
+
     local ok = false
     for _, v in ipairs(layers) do
         if v == current_state.petMatrixLayer then
@@ -787,12 +834,13 @@ local function build_pet_matrix_lists()
             break
         end
     end
-    if not ok then current_state.petMatrixLayer = layers[1] end
+    if not ok then current_state.petMatrixLayer = 'None' end
 end
 
 local function update_pet_matrix_layers_for_combo(combo)
-    local layers = DynamicLists.PetMatrixComboMap[combo] or { 'Normal' }
+    local layers = DynamicLists.PetMatrixLayersByCombo[combo] or { 'None' }
     DynamicLists.PetMatrixLayers = layers
+
     local found = false
     for _, v in ipairs(layers) do
         if v == current_state.petMatrixLayer then
@@ -800,7 +848,7 @@ local function update_pet_matrix_layers_for_combo(combo)
             break
         end
     end
-    if not found then current_state.petMatrixLayer = layers[1] end
+    if not found then current_state.petMatrixLayer = 'None' end
 end
 
 local function build_custom_layers() -- TODO: Order of custom layers is alphabetical but would prefer they be ordered the same as they are entered in PUP-LIB
@@ -825,12 +873,13 @@ end
 -----------------------------------------
 local function resolve_gear(state)
     local set = {}
-    local name = 'base'
+    local name = ''
     local now = os.time()
     local playerStatus = state.playerStatus
     local petStatus = state.petStatus
     local playerEngaged = playerStatus == 'Engaged'
     local petEngaged = petStatus == 'Engaged'
+    local engageStatus = (playerEngaged or petEngaged) and 'engaged' or 'idle'
 
     -- Select active matrix table
     local currentMatrix = safe_get(_G, 'matrices', state.matrixName)
@@ -844,37 +893,29 @@ local function resolve_gear(state)
     -------------------------------------------------
     if currentMatrix then
         set = currentMatrix.baseSet
+        name = state.matrixName .. '.baseSet'
     end
 
     -------------------------------------------------
     -- PRIMARY MATRIX LAYER
     -------------------------------------------------
     if currentMatrix then
-        local layer = state.layer or 'Normal'
-        local zoneGroup = (playerEngaged or petEngaged) and 'engaged' or 'idle'
+        local layer = state.matrixLayer or 'None'
 
-        debug_chat('Gear Resolver - Player/Pet Status:' ..
-            playerStatus .. '/' .. petStatus)
-
-        if playerEngaged and petEngaged then -- Both engaged
-            set = combine_safe(set,
-                safe_get(currentMatrix, zoneGroup, 'masterPet', layer) or
-                safe_get(currentMatrix, zoneGroup, 'masterPet', 'Normal'))
-            name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.masterPet.' .. layer
-        elseif playerEngaged and not petEngaged then -- Player Engaged, Pet Idle
-            set = combine_safe(set,
-                safe_get(currentMatrix, zoneGroup, 'master', layer) or
-                safe_get(currentMatrix, zoneGroup, 'master', 'Normal'))
-            name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.master.' .. layer
-        elseif not playerEngaged and petEngaged then -- Player Idle, Pet Engaged
-            set = combine_safe(set,
-                safe_get(currentMatrix, zoneGroup, 'pet', layer) or safe_get(currentMatrix, zoneGroup, 'pet', 'Normal'))
-            name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.pet.' .. layer
-        else
-            set = combine_safe(set,
-                safe_get(currentMatrix, zoneGroup, 'master', layer) or
-                safe_get(currentMatrix, zoneGroup, 'master', 'Normal'))
-            name = ':' .. state.matrixName .. '.' .. zoneGroup .. '.master.' .. layer
+        if layer ~= 'None' then
+            if playerEngaged and petEngaged then -- Both engaged
+                set = combine_safe(set,
+                    safe_get(currentMatrix, engageStatus, 'masterPet', layer))
+                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.masterPet.' .. layer
+            elseif playerEngaged and not petEngaged then -- Player Engaged, Pet Idle
+                set = combine_safe(set,
+                    safe_get(currentMatrix, engageStatus, 'master', layer))
+                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.master.' .. layer
+            elseif not playerEngaged and petEngaged then -- Player Idle, Pet Engaged
+                set = combine_safe(set,
+                    safe_get(currentMatrix, engageStatus, 'pet', layer))
+                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.pet.' .. layer
+            end
         end
     end
 
@@ -883,18 +924,16 @@ local function resolve_gear(state)
     -------------------------------------------------
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
     if petMatrix and state.petMatrixCombo and state.petMatrixCombo ~= 'None' then
-        local zoneGroup = (playerEngaged or petEngaged) and 'engaged' or 'idle'
-        local combo = state.petMatrixCombo
-        local layer = state.petMatrixLayer or 'Normal'
+        local petCombo = state.petMatrixCombo
+        local pmLayer = state.petMatrixLayer or 'Normal'
 
-        local pmSet = safe_get(petMatrix, zoneGroup, combo, layer) or safe_get(petMatrix, zoneGroup, combo, 'Normal')
-        if pmSet then
+        local pmSet = safe_get(petMatrix, engageStatus, petCombo, pmLayer)
+        if pmSet and pmSet ~= 'None' then
             set = combine_safe(set, pmSet)
             name = name ..
                 '+petMatrix.' ..
-                zoneGroup ..
-                '.' .. combo .. '.' .. (pmSet == safe_get(petMatrix, zoneGroup, combo, layer) and layer or 'Normal')
-            debug_chat('[GS] Applied PetMatrix: ' .. state.matrixName .. '/' .. zoneGroup .. '/' .. combo .. '/' .. layer)
+                engageStatus ..
+                '.' .. petCombo .. '.' .. (pmSet == safe_get(petMatrix, engageStatus, petCombo, pmLayer) and pmLayer)
         end
     end
 
@@ -935,7 +974,7 @@ local function resolve_gear(state)
             set = combine_safe(set, petWSSet)
             name = name .. '+ sets.pet.weaponskill.' .. current_state.petType
         elseif not petWSSet then
-            debug_chat('[PUPTrix AutoEnmity]: No matching set found in petmatrix.weaponskills for' ..
+            debug_chat('[PUPTrix AutoPetWS]: No matching set found in petmatrix.weaponskills for' ..
                 current_state.petType)
         end
     end
@@ -1007,6 +1046,7 @@ function pet_change(p, gain)
                 debug_chat(debugmsg)
                 current_state.petType = petTypeCombo
                 current_state.petMatrixCombo = petTypeCombo
+                update_pet_matrix_layers_for_combo(petTypeCombo)
             end
         else -- Pet is lost/deactivated
             current_state.petStatus = 'None'
@@ -1455,8 +1495,8 @@ function self_command(cmd)
             build_layers()
             build_pet_matrix_lists()
             windower.add_to_chat(122, string.format('[PUPtrix] Cycling Matrix'))
-        elseif which == 'layer' then
-            cycle('layer', DynamicLists.Layers)
+        elseif which == 'matrixlayer' then
+            cycle('matrixLayer', DynamicLists.MatrixLayers)
             windower.add_to_chat(122, string.format('[PUPtrix] Cycling Matrix Layer'))
         elseif which == 'petmatrix' then
             cycle('petMatrixCombo', DynamicLists.PetMatrixCombos)

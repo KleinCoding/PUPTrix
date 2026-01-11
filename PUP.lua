@@ -4,7 +4,7 @@
 include('PUP-LIB.lua')
 
 
--- TODOS: Pet WS set swap, Pet casting set swaps, Pet Action Tracking, Pet enmity sets, Capacity points mode
+-- TODOS: Pet casting set swaps, Pet Action Tracking, Capacity points mode
 
 
 
@@ -252,43 +252,45 @@ function get_sets()
     matrices.gear_matrix.petMatrix = {}
     matrices.gear_matrix.baseSet = customSets.base
 
-    matrices.gear_matrix.idle = {                                                            -- Layer names Acc, TP, Regen etc can be uniquely named. but ALWAYS leave a "Normal" layer
-        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },                -- Master is Idle
-        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} }              -- Master & Pet are Idle
+    -- Layer names Acc, TP, Regen etc are an example, layers can be uniquely named.
+    -- It is important that both idle and engaged have the same layer options
+    matrices.gear_matrix.idle = {
+        masterPet = { Acc = {}, TP = {}, Regen = {}, Ranged = {} } -- Master & Pet are Idle
     }
-    matrices.gear_matrix.engaged = {                                                         -- If Priority value is TRUE, the layer will take priority over petmatrix layers
-        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } },   -- Master is Engaged, pet is Idle
-        pet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } },      -- Master is idle, pet is engaged
-        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } } -- Master & Pet are engaged
+    matrices.gear_matrix.engaged = {                               -- If Priority value is TRUE, the layer will take priority over petmatrix layers
+        master = { Acc = {}, TP = {}, Regen = {}, DT = {} },       -- Master is Engaged, pet is Idle
+        pet = { Acc = {}, TP = {}, Regen = {}, DT = {} },          -- Master is idle, pet is engaged
+        masterPet = { Acc = {}, TP = {}, Regen = {}, DT = {} }     -- Master & Pet are engaged
     }
 
     -- If a petMatrix is supplied, additional pet specific layers can be applied on top
-    -- Can define unique layer names, you dont have to use these
+    -- Can define unique layer names, these names are an example
+    -- It is important that both idle and engaged have the same layer options
     matrices.gear_matrix.petMatrix.idle = { -- Pet is Idle
-        Valor_Valor = { Normal = {}, Tank = {}, DD = {}, TurtleTank = {} },
-        Valor_Sharp = { Normal = {}, Tank = {}, DD = {}, RangedDD = {} },
-        Valor_Harle = { Normal = {}, Tank = {}, DD = {}, Heal = {} },
-        Sharp_Sharp = { Normal = {}, Ranged = {}, Ranged2 = {} },
-        Soul_Storm = { Normal = {}, SoloSupport = {}, Heal = {} },
-        Spirit_Storm = { Normal = {}, BLM = {} },
-        Storm_Storm = { Normal = {}, RDMSupport = {} },
+        Valor_Valor = { Tank = {}, DD = {}, TurtleTank = {} },
+        Valor_Sharp = { Tank = {}, DD = {}, RangedDD = {} },
+        Valor_Harle = { Tank = {}, DD = {}, Heal = {} },
+        Sharp_Sharp = { Ranged = {} },
+        Soul_Storm = { SoloSupport = {}, Heal = {} },
+        Spirit_Storm = { BLM = {} },
+        Storm_Storm = { RDMSupport = {} },
     }
 
     matrices.gear_matrix.petMatrix.engaged = { -- Pet is Engaged
-        Valor_Valor = { Normal = {}, Tank = {}, DD = {}, TurtleTank = {} },
-        Valor_Sharp = { Normal = {}, Tank = {}, DD = {}, RangedDD = {} },
-        Valor_Harle = { Normal = {}, Tank = {}, DD = {}, Heal = {} },
-        Sharp_Sharp = { Normal = {}, Ranged = {}, Ranged2 = {} },
-        Soul_Storm = { Normal = {}, SoloSupport = {}, Heal = {} },
-        Spirit_Storm = { Normal = {}, BLM = {} },
-        Storm_Storm = { Normal = {}, RDMSupport = {} },
+        Valor_Valor = { Tank = {}, DD = {}, TurtleTank = {} },
+        Valor_Sharp = { Tank = {}, DD = {}, RangedDD = {} },
+        Valor_Harle = { Tank = {}, DD = {}, Heal = {} },
+        Sharp_Sharp = { Ranged = {} },
+        Soul_Storm = { SoloSupport = {}, Heal = {} },
+        Spirit_Storm = { BLM = {} },
+        Storm_Storm = { RDMSupport = {} },
     }
 
     matrices.gear_matrix.petMatrix.weaponskills = { -- If a WS set is provided and autoPetWS toggle is on, WS set will be determined by active puppet type
         Valor_Valor = {},
         Valor_Sharp = {},
         Valor_Harle = {},
-        Sharp_Sharp = { head = 'Herculean Helm'},
+        Sharp_Sharp = {},
         Soul_Storm = {},
         Spirit_Storm = {},
         Storm_Storm = {},
@@ -377,7 +379,7 @@ function get_sets()
 
 
     ------------------------------------------------------------
-    ------------------- Special Pet Layers ---------------------------------
+    ------------------- Special Pet Layers ---------------------
     ------------------------------------------------------------
     sets.pet = {}
     sets.pet.enmity = {
@@ -387,11 +389,9 @@ function get_sets()
         feet = "Heyoka Leggings",
         right_ear = "Rimeice Earring",
     }
-    sets.pet.weaponskill = customSets.rangerPetWS
-
 
     ------------------------------------------------------------
-    ------------------- Item Layers ---------------------------------
+    ------------------- Item Layers ----------------------------
     ------------------------------------------------------------
     sets.precast.items = {}
     sets.precast.items["Holy Water"] = {
