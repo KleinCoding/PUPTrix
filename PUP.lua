@@ -14,11 +14,15 @@ function get_sets()
     sets = {}
     customSets = {}
 
-    -- Additional values for quick reference of common gear, alter to your gear's level
+    -- For Animator Cycle
     Animators = {}
     Animators.Range = "Animator P II"
     Animators.Melee = "Neo Animator"
 
+    -- For Weapon Cycle
+    Weapons = {}
+
+    -- Additional values for quick reference of common gear, alter to your gear's level
     Artifact_Foire = {}
     Artifact_Foire.Head_PRegen = "Puppetry Taj"
     Artifact_Foire.Body_WSD_PTank = "Foire Tobe +1"
@@ -143,7 +147,6 @@ function get_sets()
         neck = "Stoicheion Medal",
         left_ear = "Sortiarius Earring",
         right_ear = { name = "Moonshade Earring", augments = { 'Attack+4', 'TP Bonus +250', } },
-        -- left_ring="Tali'ah Ring", threw this away
         right_ring = "Rajas Ring",
         back = { name = "Visucius's Mantle", augments = { 'INT+20', 'Mag. Acc+20 /Mag. Dmg.+20', 'INT+10', 'Pet: Haste+10', 'Damage taken-5%', } },
     }
@@ -242,35 +245,26 @@ function get_sets()
     sets.layers = {}
 
     ------------------------------------------------------------
-    -------------------Matrices-----------------------------
+    -------------------Matrices---------------------------------
     ------------------------------------------------------------
 
     matrices.gear_matrix = {}
     matrices.gear_matrix.petMatrix = {}
+    matrices.gear_matrix.baseSet = customSets.base
 
-    matrices.gear_matrix.idle = { -- Layer names Acc, TP, Regen etc can be uniquely named. but ALWAYS leave a "Normal" layer
-        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },
-        pet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },
-        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} }
+    matrices.gear_matrix.idle = {                                                            -- Layer names Acc, TP, Regen etc can be uniquely named. but ALWAYS leave a "Normal" layer
+        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },                -- Master is Idle
+        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} }              -- Master & Pet are Idle
     }
-    matrices.gear_matrix.engaged = { -- Layer names Acc, TP, Regen etc can be uniquely named. but ALWAYS leave a "Normal" layer
-        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },
-        pet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} },
-        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, Ranged = {} }
-    }
-
-    -- If a petMatrix is supplied, additional pet specific layers can be applied
-    matrices.gear_matrix.petMatrix.idle = { -- Can define unique layer names, you dont have to use these
-        Valor_Valor = { Normal = customSets.overdrive, Tank = {}, DD = {}, TurtleTank = {} },
-        Valor_Sharp = { Normal = {}, Tank = {}, DD = {}, RangedDD = {} },
-        Valor_Harle = { Normal = {}, Tank = {}, DD = {}, Heal = {} },
-        Sharp_Sharp = { Normal = {}, Ranged = {}, Ranged2 = {} },
-        Soul_Storm = { Normal = {}, SoloSupport = {}, Heal = {} },
-        Spirit_Storm = { Normal = {}, BLM = {} },
-        Storm_Storm = { Normal = {}, RDMSupport = {} },
+    matrices.gear_matrix.engaged = {                                                         -- If Priority value is TRUE, the layer will take priority over petmatrix layers
+        master = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } },   -- Master is Engaged, pet is Idle
+        pet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } },      -- Master is idle, pet is engaged
+        masterPet = { Normal = {}, Acc = {}, TP = {}, Regen = {}, DT = { priority = true } } -- Master & Pet are engaged
     }
 
-    matrices.gear_matrix.petMatrix.engaged = { -- Not every combo is needed can take dynamically from keys with proper safety checks. always leave "Normal" set.
+    -- If a petMatrix is supplied, additional pet specific layers can be applied on top
+    -- Can define unique layer names, you dont have to use these
+    matrices.gear_matrix.petMatrix.idle = { -- Pet is Idle
         Valor_Valor = { Normal = {}, Tank = {}, DD = {}, TurtleTank = {} },
         Valor_Sharp = { Normal = {}, Tank = {}, DD = {}, RangedDD = {} },
         Valor_Harle = { Normal = {}, Tank = {}, DD = {}, Heal = {} },
@@ -278,6 +272,26 @@ function get_sets()
         Soul_Storm = { Normal = {}, SoloSupport = {}, Heal = {} },
         Spirit_Storm = { Normal = {}, BLM = {} },
         Storm_Storm = { Normal = {}, RDMSupport = {} },
+    }
+
+    matrices.gear_matrix.petMatrix.engaged = { -- Pet is Engaged
+        Valor_Valor = { Normal = {}, Tank = {}, DD = {}, TurtleTank = {} },
+        Valor_Sharp = { Normal = {}, Tank = {}, DD = {}, RangedDD = {} },
+        Valor_Harle = { Normal = {}, Tank = {}, DD = {}, Heal = {} },
+        Sharp_Sharp = { Normal = {}, Ranged = {}, Ranged2 = {} },
+        Soul_Storm = { Normal = {}, SoloSupport = {}, Heal = {} },
+        Spirit_Storm = { Normal = {}, BLM = {} },
+        Storm_Storm = { Normal = {}, RDMSupport = {} },
+    }
+
+    matrices.gear_matrix.petMatrix.weaponskills = { -- If a WS set is provided and autoPetWS toggle is on, WS set will be determined by active puppet type
+        Valor_Valor = {},
+        Valor_Sharp = {},
+        Valor_Harle = {},
+        Sharp_Sharp = { head = 'Herculean Helm'},
+        Soul_Storm = {},
+        Spirit_Storm = {},
+        Storm_Storm = {},
     }
 
     ------------------------------------------------------------
@@ -289,10 +303,10 @@ function get_sets()
 
     sets.layers.CustomLayers.aMasterDT = customSets.kyou
     sets.layers.CustomLayers.aMasterDTDEF = customSets.masterDTDEF
+    sets.layers.CustomLayers.aMasterDTHP = customSets.tanking
     sets.layers.CustomLayers.dHealing = customSets.healing
     sets.layers.CustomLayers.bOverdriveVE = customSets.overdrive
     sets.layers.CustomLayers.cOverdriveSS = customSets.overdriveSS
-    sets.layers.CustomLayers.eTanking = customSets.tanking
 
     ------------------------------------------------------------
     -------------------Town / Cities Sets-----------------------
@@ -395,15 +409,15 @@ end
 
 -- KEYBINDS HERE
 function user_setup()
-    send_command('bind ^f9 gs c cycle Matrix')       -- Ctrl+F9 - Cycle active matrix
-    send_command('bind !f9 gs c cycle layer')        -- Alt+F9 - Cycle active matrix layer
-    send_command('bind ^f10 gs c cycle PetMatrix')   -- Ctrl+F10 - Cycle active Pet Matrix
+    send_command('bind ^f9 gs c cycle Matrix')          -- Ctrl+F9 - Cycle active matrix
+    send_command('bind !f9 gs c cycle layer')           -- Alt+F9 - Cycle active matrix layer
+    send_command('bind ^f10 gs c cycle PetMatrix')      -- Ctrl+F10 - Cycle active Pet Matrix
     send_command('bind !f10 gs c cycle PetMatrixLayer') -- Alt+F10 - Cycle Active Pet Matrix Layer
-    send_command('bind !c gs c cycle customlayer')   -- Alt+C - Cycle Custom Later
+    send_command('bind !c gs c cycle customlayer')      -- Alt+C - Cycle Custom Later
 
-    send_command('bind !e gs c toggle automaneuver') -- Alt+E - Toggle autoManeuver
-    send_command('bind !d gs c toggle AutoDeploy')   -- Alt+D - Toggle AutoDeploy
-    send_command('bind !` gs c toggle WeaponLock')   -- Alt+` - Toggle Weapon Lock
+    send_command('bind !e gs c toggle automaneuver')    -- Alt+E - Toggle autoManeuver
+    send_command('bind !d gs c toggle AutoDeploy')      -- Alt+D - Toggle AutoDeploy
+    send_command('bind !` gs c toggle WeaponLock')      -- Alt+` - Toggle Weapon Lock
 end
 
 function file_unload(file_name)
