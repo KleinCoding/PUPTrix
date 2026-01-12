@@ -453,7 +453,7 @@ end
 -- KEYBINDS HERE
 function user_setup()
     send_command('bind ^f9 gs c cycle Matrix')          -- Ctrl+F9 - Cycle active matrix
-    send_command('bind !f9 gs c cycle matrixLayer')           -- Alt+F9 - Cycle active matrix layer
+    send_command('bind !f9 gs c cycle matrixLayer')     -- Alt+F9 - Cycle active matrix layer
     send_command('bind ^f10 gs c cycle PetMatrix')      -- Ctrl+F10 - Cycle active Pet Matrix
     send_command('bind !f10 gs c cycle PetMatrixLayer') -- Alt+F10 - Cycle Active Pet Matrix Layer
     send_command('bind !c gs c cycle customlayer')      -- Alt+C - Cycle Custom Later
