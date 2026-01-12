@@ -244,7 +244,7 @@ function get_sets()
 
     customSets.valoredgeWS = {
         main = { name = "Ohrmazd", augments = { 'Pet: Accuracy+20 Pet: Rng. Acc.+20', 'Pet: Phys. dmg. taken -4%', 'Pet: STR+13 Pet: DEX+13 Pet: VIT+13', } },
-        range = "Animator P II",
+        range = "Animator P",
         body = "Pitre Tobe +4",
         feet = { name = "Naga Kyahan", augments = { 'Pet: HP+100', 'Pet: Accuracy+25', 'Pet: Attack+25', } },
         left_ear = "Kyrene's Earring",
@@ -264,7 +264,6 @@ function get_sets()
     matrices.gear_matrix.baseSet = customSets.base
 
     -- Layer names Acc, TP, Regen etc are an example, layers can be uniquely named.
-    -- It is important that both idle and engaged have the same layer options
     -- Passing priority = true will cause that matrixLayer to overwrite the active petMatrixLayer
     matrices.gear_matrix.idle = {                                                                            -- Master & Pet both idle
         masterPet = { Acc = { head = 'Herculean Helm', priority = true }, TP = {}, Regen = {}, Ranged = {} } -- Master & Pet are Idle
@@ -277,7 +276,6 @@ function get_sets()
 
     -- If a petMatrix is supplied, additional pet specific layers can be applied on top
     -- Can define unique layer names, these names are an example
-    -- It is important that both idle and engaged have the same layer options
     matrices.gear_matrix.petMatrix.idle = { -- Pet is Idle
         Valor_Valor = { Tank = {}, DD = {}, TurtleTank = {} },
         Valor_Sharp = { Tank = {}, DD = {}, RangedDD = {} },

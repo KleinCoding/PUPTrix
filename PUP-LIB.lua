@@ -951,13 +951,15 @@ local function resolve_gear(state)
     -------------------------------------------------
     if AUTOPETWS_STATE.apw_toggle_on and AUTOPETWS_STATE.apw_set_active and currentMatrix then
         local petWSSet = currentMatrix.petMatrix.weaponskills[PLAYER_STATE.ps_pet_type]
-        debug_chat('----------------------- attempting to equip pet WS')
         if petWSSet then
-             debug_chat('----------------------- attempting to equip pet WS --------- SET FOUND')
             set = combine_safe(set, petWSSet)
             setName = setName .. '+ sets.petMatrix.weaponskills.' .. PLAYER_STATE.ps_pet_type
         elseif not petWSSet then
             debug_chat('[PUPTrix AutoPetWS]: No matching set found in petmatrix.weaponskills for' ..
+                PLAYER_STATE.ps_pet_type)
+
+        elseif not PLAYER_STATE.ps_pet_type then
+            debug_chat('[PUPTrix AutoPetWS]: Pet Type not set. Activate or Deploy to set.' ..
                 PLAYER_STATE.ps_pet_type)
         end
     end
