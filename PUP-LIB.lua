@@ -56,7 +56,6 @@ local PUP_FRAME_MAP           = {
     ["Stormwaker Frame"] = "Storm",
 }
 
--- TODO: Remove old logic for dynamic HUD opacity
 -- HUD Values
 HUD_OPACITY_ACTIVE            = 0.7 -- Full visibility when active
 HUD_OPACITY_IDLE              = 0.2 -- Dimmed opacity when idle/in town
@@ -66,8 +65,6 @@ HUD_BG_ALPHA                  = 80  -- Background transparency (0–255)
 HUD_LABEL_WIDTH               = 20  -- Fixed label width for alignment
 HUD_TEXT_ALPHA                = 150
 HUD_TEXT_STROKE_ALPHA         = 125
-local current_opacity         = HUD_OPACITY_ACTIVE
-local opacity_target          = HUD_OPACITY_ACTIVE
 
 -- AutoRepair values
 local PET_HP_UPDATE_INTERVAL  = 1.0                   -- once per second
@@ -114,82 +111,88 @@ local pet_ws_active = false
 
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
 -- TODO: Remove HUD opacity change smoothing logic
-
 -- TODO: Pet Casting Set Support
-
 -- TODO: HUD updates. Mini, Lite, and Full modes. Mini only shows sets and abbreviated modes (if on), Lite shows Matrix/Layers & Sets and shows modes (if on). Full shows all data and shows hotkeys
+-- TODO: Remove old logic for dynamic HUD opacity
+-- TODO: Commands to alter HUD position/opacity via ingame command
+-- TODO: Cleanup state values
+-- TODO: AutoPetWS: If lockout is 0, disable lockout logic/keep set on
+-- TODO: Move HUD code to HUD file
+-- TODO: Consume varialbes from -VARS file
 
 -----------------------------------------
 -- State
 -----------------------------------------
-local current_state = {              -- TODO: Break this block into multiple state values. HUD/Player/Pet/Matrix etc
-    -- HUD Values
-    hudView                = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
-    activeSetName          = 'None', -- Text string of current sets, for HUD display
 
-    -- Player State
-    playerStatus           = 'Idle', -- Current player state - Idle, Engaged
-    petStatus              = 'None', -- Current pet state - None, Idle, Engaged
-    petType                = '',     -- Current Pet Type - Valor_Valor, Sharp_Valor, Storm_Storm, etc.
-    petHP                  = 0,
-
-    -- Matrix & Matrix Layers state
-    matrixName             = 'gear_matrix', -- the key in global `matrices` to use
-    matrixLayer            = 'None',        -- key for active matrix layer
-
-    -- Pet Matrix & Pet Matrix Layers state --
-    petMatrixCombo         = 'None', -- Key for active pet type to take from Pet Matrix e.g., "Valor_Valor", "Sharp_Sharp", etc.
-    petMatrixLayer         = 'None', -- key for active pet matrix layer
-
-    -- Custom Layers state
-    customLayer            = 'Off', -- active custom set key (sets.layers.CustomLayers.*)
-
-    -- Automation Mode Toggles
-    autoManeuver           = false,
-
-    -- Auto Deploy Toggle & State
-    autoDeploy             = false,
-    last_deploy_time       = 0,
-    last_engaged_target_id = 0,
-
-    -- Auto Repair Cycle & State
-    autoRepairThreshold    = 0, -- AUTO_REPAIR_THRESHHOLDS = {0, 20, 40, 55, 70}
-    repairCooldownUpgrades = 5, -- 0–5; each level reduces cooldown by 3 s -- TODO: Make settings const
-    lastRepairAttempt      = 0, -- timestamp of last repair attempt (whether success or fail)
-    lastRepairUsed         = 0, -- timestamp of last successful repair
-    last_pet_hp_update     = 0, -- timestamp of last time script updated petHP value
-
-    -- Auto Pet WS Toggle & Stat
-    autoPetWSToggle        = false,
-    autoPetWS              = {
-        active = false,
-        timer = 0,
-        lockout = 0 --TODO: make a user config, and add 'overdriveLockout' for OD scenarios TODO: If lockout is 0, disable lockout logic/keep set on
-    },
-
-    -- Utility Toggles
-    debugMode              = false, --TODO: Derive initial value from VARS
-    weaponLock             = true,  --TODO: Derive initial value from VARS
-    autoEnmity             = false, --TODO: Derive initial value from VARS
-
-    -- Misc
-    currentZoneId          = 'None', -- For managing Town sets
+HUD_STATE = {
+    hud_view     = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
+    hud_set_name = 'None', -- Text string of current sets, for HUD display
 }
 
--- Auto-maneuver scheduler state
-local automan = {
-    queue                  = {},  -- FIFO of elements to reapply
-    last_use               = 0,   -- os.time() of last attempt (player or script)
-    cooldown               = 11,  -- seconds between maneuvers
-    retry_delay            = 3,   -- seconds to wait before retrying a failed attempt
-    pending                = nil, -- { element="<Elem>", issued_at=timestamp }
-    pending_to             = 4,   -- seconds allowed for buff to appear after issuing
+AUTOMANEUVER_STATE = {
+    am_toggle_on       = false,
+    am_queue           = {},  -- FIFO of elements to reapply
+    am_last_attempt    = 0,   -- os.time() of last attempt (player or script)
+    am_cooldown        = 11,  -- seconds between maneuvers
+    am_retry_delay     = 3,   -- seconds to wait before retrying a failed attempt
+    am_pending         = nil, -- { element="<Elem>", issued_at=timestamp }
+    am_pending_window  = 4,   -- seconds allowed for buff to appear after issuing
+    am_suppress_until  = 0,   -- timestamp; while now < this, ignore buff-loss queues
+    am_suppress_window = 3,   -- seconds to ignore loss events after a manual JA
+    am_retry_counts    = {},  -- { ["Fire"] = 1, ["Water"] = 3, ... }
+    am_max_retries     = 3,   -- TODO: Take from VARs
+}
 
-    manual_suppress_until  = 0,   -- timestamp; while now < this, ignore buff-loss queues
-    manual_suppress_window = 3,   -- seconds to ignore loss events after a manual JA
+AUTODEPLOY_STATE = {
+    ad_toggle_on              = false,
+    ad_last_deploy_timestamp  = 0,
+    ad_last_engaged_target_id = 0,
+}
 
-    retry_counts           = {},  -- { ["Fire"] = 1, ["Water"] = 3, ... }
-    max_retries            = 3,
+AUTOENMITY_STATE = {
+    ae_toggle_on = false
+}
+
+AUTOREPAIR_STATE = {
+    ar_threshold         = 0, -- AUTO_REPAIR_THRESHHOLDS = {0, 20, 40, 55, 70}
+    ar_cooldown_upgrades = 5, -- 0–5; each level reduces cooldown by 3 s -- TODO: Make settings const
+    ar_last_attempt      = 0, -- timestamp of last repair attempt (whether success or fail)
+    ar_last_used         = 0, -- timestamp of last successful repair
+    ar_pet_hp_timestamp  = 0, -- timestamp of last time script updated petHP value
+}
+
+AUTOPETWS_STATE = {
+    apw_toggle_on = false,
+    apw_set_active = false,
+    apw_timer = 0,
+    apw_lockout = 0 --TODO: make a user config, and add 'overdriveLockout' for OD scenarios TODO: If lockout is 0, disable lockout logic/keep set on
+}
+
+PLAYER_STATE = {
+    ps_player_status = 'Idle', -- Current player state - Idle, Engaged
+    ps_pet_status    = 'None', -- Current pet state - None, Idle, Engaged
+    ps_pet_type      = '',     -- Current Pet Type - Valor_Valor, Sharp_Valor, Storm_Storm, etc.
+    ps_pet_hp        = 0,
+}
+
+CURRENT_STATE = {
+    -- Matrix & Matrix Layers state
+    matrixName     = 'gear_matrix', -- the key in global `matrices` to use
+    matrixLayer    = 'None',        -- key for active matrix layer
+
+    -- Pet Matrix & Pet Matrix Layers state --
+    petMatrixCombo = 'None', -- Key for active pet type to take from Pet Matrix e.g., "Valor_Valor", "Sharp_Sharp", etc.
+    petMatrixLayer = 'None', -- key for active pet matrix layer
+
+    -- Custom Layers state
+    customLayer    = 'Off', -- active custom set key (sets.layers.CustomLayers.*)
+
+    -- Utility Toggles
+    debugMode      = false, --TODO: Derive initial value from VARS
+    weaponLock     = true,  --TODO: Derive initial value from VARS
+
+    -- Misc
+    currentZoneId  = 'None', -- For managing Town sets
 }
 
 -----------------------------------------
@@ -202,7 +205,7 @@ end
 
 local function debug_chat(msg) -- Sends messages to chat based on debug toggle status
     -- TODO: Expand debug chat options from on/off to Off, Full, and Light
-    if current_state.debugMode then windower.add_to_chat(122, msg) end
+    if CURRENT_STATE.debugMode then windower.add_to_chat(122, msg) end
 end
 
 local function ordered_keys(tbl) -- Helper for matrix/set names
@@ -250,23 +253,23 @@ local function player_has_oil() -- TODO: Tie to settings for bags#s -- NOT WORKI
 end
 
 local function get_repair_cooldown() -- Determines Repair Cooldown
-    local lvl = math.min(current_state.repairCooldownUpgrades or 0, MAX_UPGRADE_LEVEL)
+    local lvl = math.min(AUTOREPAIR_STATE.ar_cooldown_upgrades or 0, MAX_UPGRADE_LEVEL)
     return BASE_REPAIR_COOLDOWN - (lvl * UPGRADE_REDUCTION)
 end
 
 
 local function update_pet_hp() -- Updates pet HP to state
     local now = os.clock()
-    if now - current_state.last_pet_hp_update < PET_HP_UPDATE_INTERVAL then return end
-    current_state.last_pet_hp_update = now
+    if now - AUTOREPAIR_STATE.ar_pet_hp_timestamp < PET_HP_UPDATE_INTERVAL then return end
+    AUTOREPAIR_STATE.ar_pet_hp_timestamp = now
 
     local pet_mob = windower.ffxi.get_mob_by_target('pet')
     if pet_mob and pet_mob.hpp then
-        current_state.petHP = pet_mob.hpp
+        PLAYER_STATE.ps_pet_hp = pet_mob.hpp
     elseif pet and pet.hpp then
-        current_state.petHP = pet.hpp
+        PLAYER_STATE.ps_pet_hp = pet.hpp
     else
-        current_state.petHP = 0
+        PLAYER_STATE.ps_pet_hp = 0
     end
 end
 
@@ -283,11 +286,11 @@ local function puppet_is_engaged() -- Returns true if the automaton is already e
 end
 
 local function get_pet_ws_set()
-    local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
+    local currentMatrix = safe_get(_G, 'matrices', CURRENT_STATE.matrixName)
     if not currentMatrix or not currentMatrix.petMatrix or not currentMatrix.petMatrix.weaponskills then
         return nil
     end
-    return currentMatrix.petMatrix.weaponskills[current_state.petType]
+    return currentMatrix.petMatrix.weaponskills[PLAYER_STATE.ps_pet_type]
 end
 
 local function can_player_act()
@@ -381,10 +384,10 @@ local function hud_update()
     -------------------------------------------------
     -- Sets Only HUD
     -------------------------------------------------
-    if current_state.hudView == 'SetsOnly' then
+    if HUD_STATE.hud_view == 'SetsOnly' then
         -- Compact one-line display
-        if current_state.activeSetName and current_state.activeSetName ~= 'None' then
-            local combined = current_state.activeSetName:gsub("%+", "  ➜  ")
+        if HUD_STATE.hud_set_name and HUD_STATE.hud_set_name ~= 'None' then
+            local combined = HUD_STATE.hud_set_name:gsub("%+", "  ➜  ")
             table.insert(lines, "Sets: " .. combined)
         else
             table.insert(lines, "Sets: None")
@@ -393,21 +396,21 @@ local function hud_update()
         -------------------------------------------------
         -- Condensed HUD
         -------------------------------------------------
-    elseif current_state.hudView == 'Condensed' then
+    elseif HUD_STATE.hud_view == 'Condensed' then
         table.insert(lines,
-            align_label("MatrixLayer", format_count_of_choices(current_state.matrixLayer, DynamicLists.MatrixLayers)))
+            align_label("MatrixLayer", format_count_of_choices(CURRENT_STATE.matrixLayer, DynamicLists.MatrixLayers)))
         table.insert(lines,
             align_label("PetMatrixLayer",
-                format_count_of_choices(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)))
-        table.insert(lines, align_label("AutoDeploy", current_state.autoDeploy and 'On' or 'Off'))
+                format_count_of_choices(CURRENT_STATE.petMatrixLayer, DynamicLists.PetMatrixLayers)))
+        table.insert(lines, align_label("AutoDeploy", AUTODEPLOY_STATE.ad_toggle_on and 'On' or 'Off'))
 
         -- Only show AutoManeuver in Condensed view if it's enabled
-        if current_state.autoManeuver then
+        if AUTOMANEUVER_STATE.am_toggle_on then
             table.insert(lines, align_label("AutoManeuver", "On"))
         end
 
         -- Only show AutoDeploy in Condensed view if it's enabled
-        if current_state.autoDeploy then
+        if AUTODEPLOY_STATE.ad_toggle_on then
             table.insert(lines, align_label("AutoDeploy", "On"))
         end
     else
@@ -420,21 +423,21 @@ local function hud_update()
         -- Matrix name
         local matrix_idx = 1
         for i, v in ipairs(DynamicLists.Matrices) do
-            if v == current_state.matrixName then
+            if v == CURRENT_STATE.matrixName then
                 matrix_idx = i; break
             end
         end
         table.insert(lines,
             align_label("Matrix",
-                string.format("%s (%d/%d)", current_state.matrixName or "?", matrix_idx, #DynamicLists.Matrices)))
+                string.format("%s (%d/%d)", CURRENT_STATE.matrixName or "?", matrix_idx, #DynamicLists.Matrices)))
 
         -- Matrix
         table.insert(lines,
-            align_label("MatrixLayer", format_count_of_choices(current_state.matrixLayer, DynamicLists.MatrixLayers)))
+            align_label("MatrixLayer", format_count_of_choices(CURRENT_STATE.matrixLayer, DynamicLists.MatrixLayers)))
 
         -- Pet Matrix
         local petMatrixDisplay =
-            (current_state.petMatrixCombo and current_state.petMatrixCombo ~= '' and current_state.petMatrixCombo) or
+            (CURRENT_STATE.petMatrixCombo and CURRENT_STATE.petMatrixCombo ~= '' and CURRENT_STATE.petMatrixCombo) or
             'None'
 
         table.insert(lines, align_label(
@@ -445,32 +448,32 @@ local function hud_update()
         -- Pet Matrix Layer
         local petMatrixLayerDisplay = 'None'
         if petMatrixDisplay ~= 'None' and DynamicLists.PetMatrixLayers and #DynamicLists.PetMatrixLayers > 0 then
-            petMatrixLayerDisplay = format_count_of_choices(current_state.petMatrixLayer, DynamicLists.PetMatrixLayers)
+            petMatrixLayerDisplay = format_count_of_choices(CURRENT_STATE.petMatrixLayer, DynamicLists.PetMatrixLayers)
         end
         table.insert(lines, align_label("PetMatrixLayer", petMatrixLayerDisplay))
 
         -- Custom Layer
-        local customDisplay = (current_state.customLayer and current_state.customLayer ~= 'Off')
-            and current_state.customLayer or 'None'
+        local customDisplay = (CURRENT_STATE.customLayer and CURRENT_STATE.customLayer ~= 'Off')
+            and CURRENT_STATE.customLayer or 'None'
 
 
         table.insert(lines, align_label("CustomLayer", customDisplay))
-        table.insert(lines, align_label("Player", current_state.playerStatus))
-        table.insert(lines, align_label("Pet", current_state.petStatus))
-        table.insert(lines, align_label("AutoDeploy", current_state.autoDeploy and 'On' or 'Off'))
-        table.insert(lines, align_label("Debug", current_state.debugMode and 'On' or 'Off'))
-        table.insert(lines, align_label("AutoManeuver", current_state.autoManeuver and 'On' or 'Off'))
-        table.insert(lines, align_label("WeaponLock", current_state.weaponLock and 'On' or 'Off'))
+        table.insert(lines, align_label("Player", PLAYER_STATE.ps_player_status))
+        table.insert(lines, align_label("Pet", PLAYER_STATE.ps_pet_status))
+        table.insert(lines, align_label("AutoDeploy", AUTODEPLOY_STATE.ad_toggle_on and 'On' or 'Off'))
+        table.insert(lines, align_label("Debug", CURRENT_STATE.debugMode and 'On' or 'Off'))
+        table.insert(lines, align_label("AutoManeuver", AUTOMANEUVER_STATE.am_toggle_on and 'On' or 'Off'))
+        table.insert(lines, align_label("WeaponLock", CURRENT_STATE.weaponLock and 'On' or 'Off'))
 
-        local threshold = tonumber(current_state.autoRepairThreshold) or 0
+        local threshold = tonumber(AUTOREPAIR_STATE.ar_threshold) or 0
         local arText = (threshold == 0) and 'Off' or (string.format("%d%%", threshold))
         table.insert(lines, align_label("AutoRepair", arText))
 
 
         -- Set breakdown (bottom of full HUD) -- TODO: Make a util
-        if current_state.activeSetName and current_state.activeSetName ~= 'None' then
+        if HUD_STATE.hud_set_name and HUD_STATE.hud_set_name ~= 'None' then
             local setLines = {}
-            for segment in current_state.activeSetName:gmatch("[^+]+") do
+            for segment in HUD_STATE.hud_set_name:gmatch("[^+]+") do
                 segment = segment:gsub("^%s+", ""):gsub("%s+$", "")
                 table.insert(setLines, "  " .. segment)
             end
@@ -492,20 +495,20 @@ end
 -----------------------------------------
 
 local function check_auto_repair() -- TODO: Oil check is broken
-    local th = tonumber(current_state.autoRepairThreshold) or 0
+    local th = tonumber(AUTOREPAIR_STATE.ar_threshold) or 0
     if th == 0 then return end
-    if not (pet and pet.isvalid and (current_state.petHP or 0) > 0) then return end
+    if not (pet and pet.isvalid and (PLAYER_STATE.ps_pet_hp or 0) > 0) then return end
 
-    local hp = tonumber(current_state.petHP) or tonumber(pet.hpp) or 100
+    local hp = tonumber(PLAYER_STATE.ps_pet_hp) or tonumber(pet.hpp) or 100
     if hp > th then return end
 
     -- spam guard
     local now = os.time()
-    if now - (current_state.lastRepairAttempt or 0) < AUTOREPAIR_SPAM_GUARD then return end
+    if now - (AUTOREPAIR_STATE.ar_last_attempt or 0) < AUTOREPAIR_SPAM_GUARD then return end
 
     -- Cooldown check --
     local cd = get_repair_cooldown()
-    local elapsed = now - (current_state.lastRepairUsed or 0)
+    local elapsed = now - (AUTOREPAIR_STATE.ar_last_used or 0)
     if elapsed < cd then
         debug_chat(string.format("[AutoRepair] Cooldown active (%.1fs / %.1fs)", elapsed, cd))
         return
@@ -514,7 +517,7 @@ local function check_auto_repair() -- TODO: Oil check is broken
     -- Check if player has oil first
     --if not has_oil() then
     -- windower.add_to_chat(167, '[AutoRepair] No Automaton Oil +3 found! AutoRepair disabled.')
-    -- current_state.autoRepairThreshold = 0
+    -- AUTOREPAIR_STATE.ar_threshold= 0
     --  hud_update()
     --  return
     --end
@@ -534,7 +537,7 @@ local function check_auto_repair() -- TODO: Oil check is broken
     end
 
     debug_chat(string.format('[AutoRepair] Repair triggered (HP %.1f%% <= %d%%, %.1f yalms)', hp, th, distance))
-    current_state.lastRepairAttempt = now
+    AUTOREPAIR_STATE.ar_last_attempt = now
     windower.chat.input('/ja "Repair" <me>')
 end
 
@@ -548,19 +551,19 @@ local function has_valid_target() --- TODO: Forgot why this is unused, did it wo
 end
 
 local function auto_deploy()
-    if not current_state.autoDeploy then return end
+    if not AUTODEPLOY_STATE.ad_toggle_on then return end
     if player.status ~= 'Engaged' or not (pet and pet.isvalid) then return end
 
     local now = os.time()
-    if now - current_state.last_deploy_time < DEPLOY_DEBOUNCE then return end
+    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < DEPLOY_DEBOUNCE then return end
 
     local target = windower.ffxi.get_mob_by_target('t')
     if not (target and target.id) then return end
 
-    if target.id == current_state.last_engaged_target_id then return end
+    if target.id == AUTODEPLOY_STATE.ad_last_engaged_target_id then return end
 
-    current_state.last_engaged_target_id = target.id
-    current_state.last_deploy_time = now + DEPLOY_DELAY
+    AUTODEPLOY_STATE.ad_last_engaged_target_id = target.id
+    AUTODEPLOY_STATE.ad_last_deploy_timestamp = now + DEPLOY_DELAY
 
     if not can_player_act then
         debug_chat("[AutoManeuver] Player incapacitated. Skipping Auto Deploy.")
@@ -587,24 +590,24 @@ end
 local function enqueue_maneuver(element)
     if not element then return end
 
-    automan.queue[#automan.queue + 1] = element
+    AUTOMANEUVER_STATE.am_queue[#AUTOMANEUVER_STATE.am_queue + 1] = element
     debug_chat(string.format("[AutoManeuver] Queued %s maneuver for reapply", element))
 end
 
 local function dequeue_maneuver(element)
     if not element then return end
-    for i, e in ipairs(automan.queue) do
+    for i, e in ipairs(AUTOMANEUVER_STATE.am_queue) do
         if e == element then
-            table.remove(automan.queue, i)
+            table.remove(AUTOMANEUVER_STATE.am_queue, i)
             return
         end
     end
 end
 
 local function can_attempt_maneuver()
-    if automan.pending then return false end
+    if AUTOMANEUVER_STATE.am_pending then return false end
     local now = os.time()
-    if (now - automan.last_use) < automan.cooldown then return false end
+    if (now - AUTOMANEUVER_STATE.am_last_attempt) < AUTOMANEUVER_STATE.am_cooldown then return false end
 
     -- Ensure player is alive and pet is active
     if not player or player.status == 'Dead' then return false end
@@ -615,11 +618,11 @@ end
 
 
 local function try_cast_next_maneuver()
-    if #automan.queue == 0 or not can_attempt_maneuver() then return end
+    if #AUTOMANEUVER_STATE.am_queue == 0 or not can_attempt_maneuver() then return end
 
-    local element = automan.queue[1]
-    automan.pending = { element = element, issued_at = os.time() }
-    automan.last_use = os.time()
+    local element = AUTOMANEUVER_STATE.am_queue[1]
+    AUTOMANEUVER_STATE.am_pending = { element = element, issued_at = os.time() }
+    AUTOMANEUVER_STATE.am_last_attempt = os.time()
 
     windower.send_command('input /ja "' .. element .. ' Maneuver" <me>')
     debug_chat(string.format("[AutoManeuver] Attempting %s Maneuver", element))
@@ -627,15 +630,15 @@ end
 
 -- Called every frame by prerender (see hook above)
 local function auto_maneuver_tick()
-    if not automan.pending and #automan.queue == 0 then return end
+    if not AUTOMANEUVER_STATE.am_pending and #AUTOMANEUVER_STATE.am_queue == 0 then return end
 
     if not (pet and pet.isvalid and pet.hpp > 0) then
-        if #automan.queue > 0 or automan.pending then
+        if #AUTOMANEUVER_STATE.am_queue > 0 or AUTOMANEUVER_STATE.am_pending then
             debug_chat("[AutoManeuver] Puppet inactive — clearing queue/pending")
         end
-        automan.queue = {}
-        automan.pending = nil
-        automan.retry_counts = {}
+        AUTOMANEUVER_STATE.am_queue = {}
+        AUTOMANEUVER_STATE.am_pending = nil
+        AUTOMANEUVER_STATE.am_retry_counts = {}
         return
     end
 
@@ -644,23 +647,24 @@ local function auto_maneuver_tick()
     end
 
     -- Handle pending attempt
-    if automan.pending then
+    if AUTOMANEUVER_STATE.am_pending then
         local now = os.time()
 
-        if now - automan.pending.issued_at > automan.pending_to then
-            local el = automan.pending.element
+        if now - AUTOMANEUVER_STATE.am_pending.issued_at > AUTOMANEUVER_STATE.am_pending_window then
+            local el = AUTOMANEUVER_STATE.am_pending.element
 
-            local count = (automan.retry_counts[el] or 0) + 1
-            automan.retry_counts[el] = count
+            local count = (AUTOMANEUVER_STATE.am_retry_counts[el] or 0) + 1
+            AUTOMANEUVER_STATE.am_retry_counts[el] = count
 
-            if count >= automan.max_retries then
+            if count >= AUTOMANEUVER_STATE.am_max_retries then
                 debug_chat(string.format("[AutoManeuver] %s failed %d times - giving up.", el, count))
                 dequeue_maneuver(el)
-                automan.retry_counts[el] = nil
+                AUTOMANEUVER_STATE.am_retry_counts[el] = nil
             else
                 debug_chat(string.format("[AutoManeuver] %s timeout (attempt %d/%d) - requeueing",
-                    el, count, automan.max_retries))
-                automan.last_use = os.time() - automan.cooldown + automan.retry_delay
+                    el, count, AUTOMANEUVER_STATE.am_max_retries))
+                AUTOMANEUVER_STATE.am_last_attempt = os.time() - AUTOMANEUVER_STATE.am_cooldown +
+                    AUTOMANEUVER_STATE.am_retry_delay
                 enqueue_maneuver(el)
             end
         end
@@ -694,12 +698,12 @@ local function build_matrices()
     -- Validate/adjust current matrixName
     local found = false
     for _, matrixName in ipairs(list) do
-        if matrixName == current_state.matrixName then
+        if matrixName == CURRENT_STATE.matrixName then
             found = true
             break
         end
     end
-    if not found then current_state.matrixName = list[1] end
+    if not found then CURRENT_STATE.matrixName = list[1] end
 end
 
 -- Collect layer keys from an active matrix (engaged/idle → master/pet/masterPet → {layers})
@@ -716,7 +720,7 @@ end
 
 local function build_layers()
     local layersSet = {}
-    local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
+    local currentMatrix = safe_get(_G, 'matrices', CURRENT_STATE.matrixName)
 
     if currentMatrix then
         collect_matrix_layers_from(currentMatrix.engaged, layersSet)
@@ -734,13 +738,13 @@ local function build_layers()
     -- Validate current selection
     local valid = false
     for _, key in ipairs(DynamicLists.MatrixLayers) do
-        if key == current_state.matrixLayer then
+        if key == CURRENT_STATE.matrixLayer then
             valid = true
             break
         end
     end
 
-    if not valid then current_state.matrixLayer = 'None' end
+    if not valid then CURRENT_STATE.matrixLayer = 'None' end
 end
 
 -- Build PetMatrix combos/layers from the active matrix
@@ -749,7 +753,7 @@ local function build_pet_matrix_lists()
     DynamicLists.PetMatrixLayers = { 'None' }
     DynamicLists.PetMatrixLayersByCombo = {}
 
-    local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
+    local currentMatrix = safe_get(_G, 'matrices', CURRENT_STATE.matrixName)
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
     if not petMatrix then return end
 
@@ -791,26 +795,26 @@ local function build_pet_matrix_lists()
     -- Validate current selection (so state doesn't get stuck on an invalid value)
     local comboOk = false
     for _, key in ipairs(DynamicLists.PetMatrixCombos) do
-        if key == current_state.petMatrixCombo then
+        if key == CURRENT_STATE.petMatrixCombo then
             comboOk = true; break
         end
     end
 
-    if not comboOk then current_state.petMatrixCombo = 'None' end
+    if not comboOk then CURRENT_STATE.petMatrixCombo = 'None' end
 
     -- Update current combo's layers
-    local layers = DynamicLists.PetMatrixLayersByCombo[current_state.petMatrixCombo] or { 'None' }
+    local layers = DynamicLists.PetMatrixLayersByCombo[CURRENT_STATE.petMatrixCombo] or { 'None' }
     DynamicLists.PetMatrixLayers = layers
 
     local layerOk = false
     for _, v in ipairs(layers) do
-        if v == current_state.petMatrixLayer then
+        if v == CURRENT_STATE.petMatrixLayer then
             layerOk = true
             break
         end
     end
 
-    if not layerOk then current_state.petMatrixLayer = 'None' end
+    if not layerOk then CURRENT_STATE.petMatrixLayer = 'None' end
 end
 
 local function update_pet_matrix_layers_for_combo(combo)
@@ -819,13 +823,13 @@ local function update_pet_matrix_layers_for_combo(combo)
 
     local found = false
     for _, layerName in ipairs(layers) do
-        if layerName == current_state.petMatrixLayer then
+        if layerName == CURRENT_STATE.petMatrixLayer then
             found = true
             break
         end
     end
 
-    if not found then current_state.petMatrixLayer = 'None' end
+    if not found then CURRENT_STATE.petMatrixLayer = 'None' end
 end
 
 local function build_custom_layers() -- TODO: Order of custom layers is alphabetical but would prefer they be ordered the same as they are entered in PUP-LIB
@@ -839,13 +843,13 @@ local function build_custom_layers() -- TODO: Order of custom layers is alphabet
     -- Validate current
     local ok = false
     for _, layerName in ipairs(list) do
-        if layerName == current_state.customLayer then
+        if layerName == CURRENT_STATE.customLayer then
             ok = true
             break
         end
     end
 
-    if not ok then current_state.customLayer = 'None' end
+    if not ok then CURRENT_STATE.customLayer = 'None' end
 end
 
 -----------------------------------------
@@ -856,7 +860,7 @@ local function resolve_gear(state)
     local setName = ''
     local priorityLayer = nil
 
-    local playerEngaged =  state.playerStatus == 'Engaged'
+    local playerEngaged = state.playerStatus == 'Engaged'
     local petEngaged = state.petStatus == 'Engaged'
     local engageStatus = (playerEngaged or petEngaged) and 'engaged' or 'idle'
 
@@ -923,7 +927,7 @@ local function resolve_gear(state)
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
     if petMatrix and state.petMatrixCombo and state.petMatrixCombo ~= 'None' then
         local petCombo = state.petMatrixCombo
-        local pmLayer = state.petMatrixLayer or 'Normal'
+        local pmLayer = state.petMatrixLayer or 'None'
 
         local pmSet = safe_get(petMatrix, engageStatus, petCombo, pmLayer)
         if pmSet and pmSet ~= 'None' then
@@ -974,14 +978,14 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PET WS SWAP SET (Taken from active matrix)
     -------------------------------------------------
-    if current_state.autoPetWSToggle and current_state.autoPetWS and current_state.autoPetWS.active and currentMatrix then
-        local petWSSet = currentMatrix.petMatrix.weaponskills[current_state.petType]
+    if AUTOPETWS_STATE.apw_toggle_on and CURRENT_STATE.autoPetWS and AUTOPETWS_STATE.apw_set_active and currentMatrix then
+        local petWSSet = currentMatrix.petMatrix.weaponskills[PLAYER_STATE.ps_pet_type]
         if petWSSet then
             set = combine_safe(set, petWSSet)
-            setName = setName .. '+ sets.petMatrix.weaponskills.' .. current_state.petType
+            setName = setName .. '+ sets.petMatrix.weaponskills.' .. PLAYER_STATE.ps_pet_type
         elseif not petWSSet then
             debug_chat('[PUPTrix AutoPetWS]: No matching set found in petmatrix.weaponskills for' ..
-                current_state.petType)
+                PLAYER_STATE.ps_pet_type)
         end
     end
 
@@ -994,17 +998,17 @@ end
 -- Equip & Event Handling
 -----------------------------------------
 local function equip_and_update()
-    local set, setName = resolve_gear(current_state)
-    current_state.activeSetName = setName
+    local set, setName = resolve_gear(CURRENT_STATE)
+    HUD_STATE.hud_set_name = setName
     equip(set)
     hud_update()
 end
 
 function status_change(new, old)
-    current_state.playerStatus = new
+    PLAYER_STATE.ps_player_status = new
     set_opacity(new == 'Engaged')
 
-    if new == 'Engaged' and current_state.autoDeploy then auto_deploy() end
+    if new == 'Engaged' and AUTODEPLOY_STATE.ad_toggle_on then auto_deploy() end
     if new == 'Engaged' then equip_and_update() end
     if new == 'Idle' then equip_and_update() end
 end
@@ -1015,9 +1019,9 @@ end
 
 function pet_status_change(new, old)
     if not pet or not pet.isvalid then
-        current_state.petStatus = 'None'
+        PLAYER_STATE.ps_pet_status = 'None'
     else
-        current_state.petStatus = new
+        PLAYER_STATE.ps_pet_status = new
     end
 
     -- TODO: This logic can be moved to utility function, it is repeated in pet_change
@@ -1027,7 +1031,7 @@ function pet_status_change(new, old)
     local shorthandFrame = PUP_FRAME_MAP[petFrame]
 
     if shorthandHead and shorthandFrame then
-        current_state.petType = shorthandHead .. "_" .. shorthandFrame
+        PLAYER_STATE.ps_pet_type = shorthandHead .. "_" .. shorthandFrame
         local debugmsg = "[PUPTrix] - Pet Status Changed: " ..
             shorthandHead .. "_" .. shorthandFrame .. " - Status: " .. new
         debug_chat(debugmsg)
@@ -1045,26 +1049,26 @@ function pet_change(p, gain)
             local shorthandFrame = PUP_FRAME_MAP[petFrame]
             local petTypeCombo = shorthandHead .. "_" .. shorthandFrame
 
-            current_state.petStatus = p and p.status or 'Idle'
+            PLAYER_STATE.ps_pet_status = p and p.status or 'Idle'
 
             if shorthandHead and shorthandFrame then
                 local debugmsg = "[PUPTrix] - Pet Changed: " .. petTypeCombo
                 debug_chat(debugmsg)
-                current_state.petType = petTypeCombo
-                current_state.petMatrixCombo = petTypeCombo
+                PLAYER_STATE.ps_pet_type = petTypeCombo
+                CURRENT_STATE.petMatrixCombo = petTypeCombo
                 update_pet_matrix_layers_for_combo(petTypeCombo)
             end
         else -- Pet is lost/deactivated
-            current_state.petStatus = 'None'
-            current_state.petType = ''
+            PLAYER_STATE.ps_pet_status = 'None'
+            PLAYER_STATE.ps_pet_type = ''
             debug_chat("[PUPTrix] - Pet Lost!")
 
             -- Clear automaneuver queue when puppet deactivated/dies
-            if #automan.queue > 0 or automan.pending then
+            if #AUTOMANEUVER_STATE.am_queue > 0 or AUTOMANEUVER_STATE.am_pending then
                 debug_chat("[AutoManeuver] Puppet Lost Clearing Maneuver Queue")
-                automan.queue = {}
-                automan.pending = nil
-                automan.retry_counts = {}
+                AUTOMANEUVER_STATE.am_queue = {}
+                AUTOMANEUVER_STATE.am_pending = nil
+                AUTOMANEUVER_STATE.am_retry_counts = {}
             end
 
             -- Clear auto enmity set statuses when puppet deactivated/dies
@@ -1113,13 +1117,17 @@ function precast(spell, action, spellMap, eventArgs)
 
         -- AutoManeuver/manual sync handling
         local now = os.time()
-        dequeue_maneuver(automan.pending.element)
-        automan.last_use              = now
-        automan.pending               = nil
-        automan.manual_suppress_until = now + automan.manual_suppress_window
+
+        if AUTOMANEUVER_STATE and AUTOMANEUVER_STATE.am_pending and AUTOMANEUVER_STATE.am_pending.element then
+            dequeue_maneuver(AUTOMANEUVER_STATE.am_pending.element)
+        end
+
+        AUTOMANEUVER_STATE.am_last_attempt   = now
+        AUTOMANEUVER_STATE.am_pending        = nil
+        AUTOMANEUVER_STATE.am_suppress_until = now + AUTOMANEUVER_STATE.am_suppress_window
         debug_chat(string.format(
             "[PUPTrix AutoManeuver] %s detected",
-            name, automan.manual_suppress_window
+            name, AUTOMANEUVER_STATE.am_suppress_window
         ))
 
         return
@@ -1189,15 +1197,15 @@ function precast(spell, action, spellMap, eventArgs)
             return
         end
 
-        if current_state.autoPetWSToggle and pettp >= PET_WS_TP_THRESHOLD then
+        if AUTOPETWS_STATE.apw_toggle_on and pettp >= PET_WS_TP_THRESHOLD then
             local wsSet = get_pet_ws_set()
             if wsSet then
                 -- Equip immediately so gear is on before Deploy executes
                 equip(wsSet)
 
-                current_state.petStatus = 'Engaged'
-                current_state.autoPetWS.active = true
-                current_state.autoPetWS.timer = os.time() + PET_WS_ACTIVE_WINDOW
+                PLAYER_STATE.ps_pet_status = 'Engaged'
+                AUTOPETWS_STATE.apw_set_active = true
+                AUTOPETWS_STATE.apw_timer = os.time() + PET_WS_ACTIVE_WINDOW
 
 
                 debug_chat(string.format(
@@ -1205,7 +1213,7 @@ function precast(spell, action, spellMap, eventArgs)
                     pettp, PET_WS_TP_THRESHOLD
                 ))
             else
-                debug_chat("[AutoPetWS] Deploy prime: no WS set found for petType=" .. tostring(current_state.petType))
+                debug_chat("[AutoPetWS] Deploy prime: no WS set found for petType=" .. tostring(PLAYER_STATE.ps_pet_type))
             end
         end
     end
@@ -1259,8 +1267,8 @@ function aftercast(spell)
     if spell and spell.english == 'Repair' then
         if not spell.interrupted then
             local now = os.time()
-            current_state.lastRepairUsed = now
-            current_state.lastRepairAttempt = now
+            AUTOREPAIR_STATE.ar_last_used = now
+            AUTOREPAIR_STATE.ar_last_attempt = now
             debug_chat(string.format('[AutoRepair] Repair detected. Cooldown synced at %.2f', now))
         else
             debug_chat('[AutoRepair] Repair was interrupted; cooldown NOT updated.')
@@ -1272,12 +1280,13 @@ function aftercast(spell)
         local el = MANEUVER_MAP[spell.english]
         if spell.interrupted then
             enqueue_maneuver(el)
-            automan.last_use = os.time() - automan.cooldown + automan.retry_delay
+            AUTOMANEUVER_STATE.am_last_attempt = os.time() - AUTOMANEUVER_STATE.am_cooldown +
+                AUTOMANEUVER_STATE.am_retry_delay
             debug_chat('[AutoManeuver] Interrupted; re-queue ' .. el)
-            automan.pending = nil
+            AUTOMANEUVER_STATE.am_pending = nil
         else
             -- successful attempt; pending will be cleared on buff gain (buff_change)
-            automan.last_use = os.time()
+            AUTOMANEUVER_STATE.am_last_attempt = os.time()
         end
     end
 
@@ -1294,24 +1303,24 @@ function buff_change(name, gained, details)
 
     if gained then
         -- If we were waiting on this element, clear pending & queue.
-        if automan.pending and automan.pending.element == el then
+        if AUTOMANEUVER_STATE.am_pending and AUTOMANEUVER_STATE.am_pending.element == el then
             debug_chat(string.format("[AutoManeuver] %s buff regained (cleared pending)", el))
-            automan.pending          = nil
-            automan.queue            = {}
-            automan.retry_counts[el] = nil
+            AUTOMANEUVER_STATE.am_pending          = nil
+            AUTOMANEUVER_STATE.am_queue            = {}
+            AUTOMANEUVER_STATE.am_retry_counts[el] = nil
         end
         return
     end
 
     -- LOST a maneuver stack
     -- If this loss happened right before or after a manual JA, treat it as intentional; don't queue.
-    if secondAgo < (automan.manual_suppress_until or 0) then
+    if secondAgo < (AUTOMANEUVER_STATE.am_suppress_until or 0) then
         debug_chat(string.format("[AutoManeuver] Ignoring loss of %s (within manual suppress window)", el))
         return
     end
 
     -- Only queue if AutoManeuver is enabled: treat as a natural expiration / failed buff
-    if current_state.autoManeuver then
+    if AUTOMANEUVER_STATE.am_toggle_on then
         debug_chat(string.format("[AutoManeuver] %s maneuver expired/removed - queueing refresh", el))
         enqueue_maneuver(el)
     end
@@ -1319,12 +1328,12 @@ end
 
 function target_change(new_id)
     if player.status ~= 'Engaged' then return end
-    if not current_state.autoDeploy then return end
+    if not AUTODEPLOY_STATE.ad_toggle_on then return end
 
     -- tiny debounce to avoid spam on rapid target swaps
     local now = os.clock()
-    if now - current_state.last_deploy_time < DEPLOY_COOLDOWN then return end
-    current_state.last_deploy_time = now
+    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < DEPLOY_COOLDOWN then return end
+    AUTODEPLOY_STATE.ad_last_deploy_timestamp = now
 
     -- Skip if puppet is already engaged
     if puppet_is_engaged() then
@@ -1356,7 +1365,7 @@ function lib_init()
     build_custom_layers()
 
     -- Weaponlock
-    if current_state.weaponLock then
+    if CURRENT_STATE.weaponLock then
         disable('main', 'sub')
     end
 
@@ -1373,11 +1382,11 @@ if not prerender_registered and windower and windower.register_event then
         local now = os.time()
 
         -- Auto-Maneuver scheduler tick
-        if current_state.autoManeuver then
+        if AUTOMANEUVER_STATE.am_toggle_on then
             auto_maneuver_tick()
         end
 
-        if current_state.autoRepairThreshold ~= 0 then
+        if AUTOREPAIR_STATE.ar_threshold ~= 0 then
             update_pet_hp()
             check_auto_repair()
         end
@@ -1388,7 +1397,7 @@ if not prerender_registered and windower and windower.register_event then
 
 
         -- Auto Pet Enmity Set Logic
-        if pet and pet.isvalid and player.hpp > 0 and puppet_is_engaged() and current_state.autoEnmity then
+        if pet and pet.isvalid and player.hpp > 0 and puppet_is_engaged() and AUTOENMITY_STATE.ae_toggle_on then
             if not auto_enmity_state.active then
                 if buffactive["Fire Maneuver"] and (pet.attachments.strobe or pet.attachments["strobe II"]) and Strobe_Recast <= 1 then
                     auto_enmity_state.active = true
@@ -1413,7 +1422,7 @@ if not prerender_registered and windower and windower.register_event then
                     equip_and_update()
                 end
             end
-        elseif current_state.autoEnmity
+        elseif AUTOENMITY_STATE.ae_toggle_on
             and (player.hpp <= 0 or not pet or not pet.isvalid) then
             debug_chat("[AutoEnmity] Player / Pet dead or invalid - Enmity Gear Window Closed")
             auto_enmity_state.active = false
@@ -1426,33 +1435,33 @@ if not prerender_registered and windower and windower.register_event then
 
 
         -- Auto Pet WS Set Logic
-        if not (pet and pet.isvalid and current_state.autoPetWSToggle) then return end
+        if not (pet and pet.isvalid and AUTOPETWS_STATE.apw_toggle_on) then return end
         local petInhibitor = pet.attachments.inhibitor or pet.attachments["inhibitor II"]
         local pettp = pet.tp or 0
         local playertp = player.tp or 0
 
         -- Lockout protection -- TODO: Not sure if needed, lockout hurts more than helps
-        -- if now < current_state.autoPetWS.lockout then return end
+        -- if now < AUTOPETWS_STATE.apw_lockout then return end
 
         -- Enter Pet WS Mode
-        if not current_state.autoPetWS.active and pettp >= PET_WS_TP_THRESHOLD and puppet_is_engaged() then
+        if not AUTOPETWS_STATE.apw_set_active and pettp >= PET_WS_TP_THRESHOLD and puppet_is_engaged() then
             if petInhibitor and playertp >= 899 then
                 -- When Inhibitors are equipped puppet will not WS if player has > 899 TP, so we do not equip the pet WS set
                 return
             end
 
-            current_state.autoPetWS.active = true
-            current_state.autoPetWS.timer = now + PET_WS_ACTIVE_WINDOW
+            AUTOPETWS_STATE.apw_set_active = true
+            AUTOPETWS_STATE.apw_timer = now + PET_WS_ACTIVE_WINDOW
             debug_chat(string.format("[AutoPetWS] Pet TP %d >= %d, swapping to WS set", pettp, PET_WS_TP_THRESHOLD))
             equip_and_update()
             return
         end
 
         -- Exit after timer or TP drop or pet leaving combat
-        if current_state.autoPetWS.active and (pettp < PET_WS_TP_THRESHOLD or now > current_state.autoPetWS.timer) then
+        if AUTOPETWS_STATE.apw_set_active and (pettp < PET_WS_TP_THRESHOLD or now > AUTOPETWS_STATE.apw_timer) then
             debug_chat("[AutoPetWS] Pet WS window ended - reverting gear")
-            current_state.autoPetWS.active = false
-            current_state.autoPetWS.lockout = now -- No lockout time applied in this scenario
+            AUTOPETWS_STATE.apw_set_active = false
+            AUTOPETWS_STATE.apw_lockout = now -- No lockout time applied in this scenario
             equip_and_update()
         end
     end)
@@ -1464,7 +1473,7 @@ end
 if not target_change_event_registered and windower and windower.register_event then
     windower.register_event('target change', function()
         -- If toggle is on, player exists and is engaged & puppet exists and is not already engaged
-        if current_state.autoDeploy and player and player.status == 'Engaged' and pet.isvalid and not puppet_is_engaged then
+        if AUTODEPLOY_STATE.ad_toggle_on and player and player.status == 'Engaged' and pet.isvalid and not puppet_is_engaged then
             auto_deploy()
         end
     end)
@@ -1476,7 +1485,7 @@ end
 -----------------------------------------
 if not zone_change_hook_registered and windower and windower.register_event then
     windower.register_event('zone change', function(new_id, old_id)
-        current_state.currentZoneId = new_id
+        CURRENT_STATE.currentZoneId = new_id
         if equip_and_update then
             -- Delay gear swap on zone so that the swap occurs after player has loaded in
             coroutine.schedule(equip_and_update, 3)
@@ -1491,7 +1500,7 @@ end
 if not incoming_text_hook_registered and windower and windower.register_event then
     windower.register_event("incoming text", function(original)
         -- AutoEnmity
-        if not current_state.autoEnmity then return end
+        if not AUTOENMITY_STATE.ae_toggle_on then return end
         if not original or not pet or not pet.isvalid then return end
         if not original:contains(pet.name) then return end
 
@@ -1499,7 +1508,7 @@ if not incoming_text_hook_registered and windower and windower.register_event th
             Strobe_Time = os.time()
             Strobe_Recast = Strobe_Timer
 
-            debug_chat("[AutoEnmity] Strobe fired - reverting to normal gear")
+            debug_chat("[AutoEnmity] Strobe fired - Enmity Set Removed!")
             auto_enmity_state.active = false
             auto_enmity_state.ability = nil
             auto_enmity_state.timer = 0
@@ -1510,7 +1519,7 @@ if not incoming_text_hook_registered and windower and windower.register_event th
             Flashbulb_Recast = Flashbulb_Timer
 
 
-            debug_chat("[AutoEnmity] Flashbulb fired - reverting to normal gear")
+            debug_chat("[AutoEnmity] Flashbulb fired - Enmity Set Removed!")
             auto_enmity_state.active = false
             auto_enmity_state.ability = nil
             auto_enmity_state.timer = 0
@@ -1529,13 +1538,13 @@ local function cycle(field, list)
     if not list or #list == 0 then return end
     local idx = 1
     for i, v in ipairs(list) do
-        if v == current_state[field] then
+        if v == CURRENT_STATE[field] then
             idx = i
             break
         end
     end
-    current_state[field] = list[(idx % #list) + 1]
-    debug_chat('[GS] ' .. field .. ' -> ' .. current_state[field])
+    CURRENT_STATE[field] = list[(idx % #list) + 1]
+    debug_chat('[GS] ' .. field .. ' -> ' .. CURRENT_STATE[field])
 end
 
 function self_command(cmd)
@@ -1556,7 +1565,7 @@ function self_command(cmd)
             windower.add_to_chat(122, string.format('[PUPtrix] Cycling Matrix Layer'))
         elseif which == 'petmatrix' then
             cycle('petMatrixCombo', DynamicLists.PetMatrixCombos)
-            update_pet_matrix_layers_for_combo(current_state.petMatrixCombo)
+            update_pet_matrix_layers_for_combo(CURRENT_STATE.petMatrixCombo)
             windower.add_to_chat(122, string.format('[PUPtrix] Cycling PetMatrix'))
         elseif which == 'petmatrixlayer' then
             cycle('petMatrixLayer', DynamicLists.PetMatrixLayers)
@@ -1565,12 +1574,12 @@ function self_command(cmd)
             cycle('customLayer', DynamicLists.CustomLayers)
             windower.add_to_chat(122, string.format('[PUPtrix] Cycling Custom Layer'))
         elseif which == 'hudview' then
-            cycle('hudView', DynamicLists.HudViews)
+            cycle('hudView', DynamicLists.hud_views)
             hud_update()
-            windower.add_to_chat(122, string.format('[PUPtrix] HUD View set to %s', current_state.hudView))
+            windower.add_to_chat(122, string.format('[PUPtrix] HUD View set to %s', HUD_STATE.hud_view))
         elseif which == 'autorepair' then
             local thresholds = AUTO_REPAIR_THRESHHOLDS
-            local cur = current_state.autoRepairThreshold or 0
+            local cur = AUTOREPAIR_STATE.ar_threshold or 0
             local idx = 1
             for i, v in ipairs(thresholds) do
                 if v == cur then
@@ -1578,10 +1587,10 @@ function self_command(cmd)
                     break
                 end
             end
-            current_state.autoRepairThreshold = thresholds[(idx % #thresholds) + 1]
+            AUTOREPAIR_STATE.ar_threshold = thresholds[(idx % #thresholds) + 1]
 
-            local disp = (current_state.autoRepairThreshold == 0) and 'Off'
-                or (tostring(current_state.autoRepairThreshold) .. '%')
+            local disp = (AUTOREPAIR_STATE.ar_threshold == 0) and 'Off'
+                or (tostring(AUTOREPAIR_STATE.ar_threshold) .. '%')
 
             windower.add_to_chat(122, '[AutoRepair] Threshold: ' .. disp)
             hud_update()
@@ -1589,14 +1598,15 @@ function self_command(cmd)
     elseif c == 'toggle' then
         local which = (args[2] or ''):lower()
         if which == 'autodeploy' then
-            current_state.autoDeploy = not current_state.autoDeploy
-            windower.add_to_chat(122, '[AutoDeploy] ' .. (current_state.autoDeploy and 'On' or 'Off'))
+            AUTODEPLOY_STATE.ad_toggle_on = not AUTODEPLOY_STATE.ad_toggle_on
+            windower.add_to_chat(122, '[AutoDeploy] ' .. (AUTODEPLOY_STATE.ad_toggle_on and 'On' or 'Off'))
         elseif which == 'autopetenmity' then
-            current_state.autoEnmity = not current_state.autoEnmity
-            windower.add_to_chat(122, '[AutoPetEnmity] ' .. (current_state.autoEnmity and 'On' or 'Off'))
+            AUTOENMITY_STATE.ae_toggle_on = not AUTOENMITY_STATE.ae_toggle_on
+            windower.add_to_chat(122,
+                '[AutoPetEnmity] ' .. (AUTOENMITY_STATE.ae_toggle_on and 'On' or 'Off'))
 
             -- Clear any pending when disabling
-            if not current_state.autoEnmity then
+            if not AUTOENMITY_STATE.ae_toggle_on then
                 auto_enmity_state = {
                     active = false,
                     ability = nil,
@@ -1604,10 +1614,10 @@ function self_command(cmd)
                 }
             end
         elseif which == 'autopetws' then
-            current_state.autoPetWSToggle = not current_state.autoPetWSToggle
-            windower.add_to_chat(122, '[AutoPetWS] ' .. (current_state.autoPetWSToggle and 'On' or 'Off'))
+            AUTOPETWS_STATE.apw_toggle_on = not AUTOPETWS_STATE.apw_toggle_on
+            windower.add_to_chat(122, '[AutoPetWS] ' .. (AUTOPETWS_STATE.apw_toggle_on and 'On' or 'Off'))
             -- Clear any pending when disabling
-            if not current_state.autoPetWSToggle then
+            if not AUTOPETWS_STATE.apw_toggle_on then
                 autoPetWS = {
                     active = false,
                     timer = 0,
@@ -1615,11 +1625,11 @@ function self_command(cmd)
                 }
             end
         elseif which == 'debug' then
-            current_state.debugMode = not current_state.debugMode
-            windower.add_to_chat(122, '[Debug] ' .. (current_state.debugMode and 'On' or 'Off'))
+            CURRENT_STATE.debugMode = not CURRENT_STATE.debugMode
+            windower.add_to_chat(122, '[Debug] ' .. (CURRENT_STATE.debugMode and 'On' or 'Off'))
         elseif which == 'weaponlock' then
-            current_state.weaponLock = not current_state.weaponLock
-            if current_state.weaponLock then
+            CURRENT_STATE.weaponLock = not CURRENT_STATE.weaponLock
+            if CURRENT_STATE.weaponLock then
                 disable('main', 'sub')
                 windower.add_to_chat(122, '[WeaponLock] ON - Weapon slots locked')
             else
@@ -1627,13 +1637,13 @@ function self_command(cmd)
                 windower.add_to_chat(122, '[WeaponLock] OFF - Weapon slots unlocked')
             end
         elseif which == 'automaneuver' then
-            current_state.autoManeuver = not current_state.autoManeuver
-            windower.add_to_chat(122, '[AutoManeuver] ' .. (current_state.autoManeuver and 'On' or 'Off'))
+            AUTOMANEUVER_STATE.am_toggle_on = not AUTOMANEUVER_STATE.am_toggle_on
+            windower.add_to_chat(122, '[AutoManeuver] ' .. (AUTOMANEUVER_STATE.am_toggle_on and 'On' or 'Off'))
             -- Clear any pending when disabling
-            if not current_state.autoManeuver then
-                automan.queue = {}
-                automan.pending = nil
-                automan.retry_counts = {}
+            if not AUTOMANEUVER_STATE.am_toggle_on then
+                AUTOMANEUVER_STATE.am_queue = {}
+                AUTOMANEUVER_STATE.am_pending = nil
+                AUTOMANEUVER_STATE.am_retry_counts = {}
             end
         end
     elseif c == '__auto_deploy_fire' then

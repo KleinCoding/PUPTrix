@@ -255,13 +255,13 @@ function get_sets()
     -- Layer names Acc, TP, Regen etc are an example, layers can be uniquely named.
     -- It is important that both idle and engaged have the same layer options
     -- Passing priority = true will cause that matrixLayer to overwrite the active petMatrixLayer
-    matrices.gear_matrix.idle = {
+    matrices.gear_matrix.idle = {                                                                            -- Master & Pet both idle
         masterPet = { Acc = { head = 'Herculean Helm', priority = true }, TP = {}, Regen = {}, Ranged = {} } -- Master & Pet are Idle
     }
-    matrices.gear_matrix.engaged = {                                                                     -- If Priority value is TRUE, the layer will take priority over petmatrix layers
-        master = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                             -- Master is Engaged, pet is Idle
-        pet = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                                -- Master is idle, pet is engaged
-        masterPet = { Acc = {}, TP = {}, Regen = {}, DT = {} }                                           -- Master & Pet are engaged
+    matrices.gear_matrix.engaged = {                                                                         -- Master OR Pet are engaged                                                           -- If Priority value is TRUE, the layer will take priority over petmatrix layers
+        master = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                                 -- Master is Engaged, pet is Idle
+        pet = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                                    -- Master is idle, pet is engaged
+        masterPet = { Acc = {}, TP = {}, Regen = {}, DT = {} }                                               -- Master & Pet are engaged
     }
 
     -- If a petMatrix is supplied, additional pet specific layers can be applied on top
@@ -357,7 +357,7 @@ function get_sets()
     sets.precast.Waltz["Healing Waltz"] = {}
 
     ------------------------------------------------------------
-    ------------------- Weapon Skills / WS --------------------- update to use a base layer like fastcast for spells. see puplib
+    ------------------- Weapon Skills / WS --------------------- TODO: update to use a base layer like fastcast for spells. see puplib
     ------------------------------------------------------------
     sets.precast.WS = sets.base_ws
     sets.precast.WS["Stringing Pummel"] = set_combine(sets.precast.WS, {})
