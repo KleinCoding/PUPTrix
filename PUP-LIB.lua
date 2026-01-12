@@ -6,7 +6,6 @@ local res = require('resources')
 -- Text renderer for HUD
 local texts = require('texts')
 
-
 -----------------------------------------
 -- Hook booleans --
 -----------------------------------------
@@ -14,8 +13,6 @@ local target_change_event_registered = false
 local prerender_registered = false
 local zone_change_hook_registered = false
 local incoming_text_hook_registered = false
-
-
 
 -----------------------------------------
 -- CONSTS
@@ -66,7 +63,6 @@ local PUP_FRAME_MAP = {
 -- TODO: Kiting Mode
 -- TODO: Emergency DT Set Button
 -- TODO: Track Flashbulb/Strobe cooldown even when feature is off? Otherwise logic assumes the voke/flash are ready when turned on mid combat
-
 
 -----------------------------------------
 -- State
