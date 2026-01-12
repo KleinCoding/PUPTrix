@@ -297,7 +297,6 @@ local function get_pet_ws_set()
     return currentMatrix.petMatrix.weaponskills[current_state.petType]
 end
 
--- This is maybe a bit heavy to check every frame. Cache it? every ~0.2s?
 local function can_player_act()
     if midaction() then return false end
 
@@ -310,6 +309,7 @@ local function can_player_act()
 
     return true
 end
+
 -----------------------------------------
 -- HUD Setup -- TODO: Move to its own file
 -----------------------------------------
@@ -498,7 +498,7 @@ end
 -- AutoRepair ---------------------------
 -----------------------------------------
 
-local function check_auto_repair() -- TODO: Oil check is broken, JA block need correct IDs for debuffs
+local function check_auto_repair() -- TODO: Oil check is broken
     local th = tonumber(current_state.autoRepairThreshold) or 0
     if th == 0 then return end
     if not (pet and pet.isvalid and (current_state.petHP or 0) > 0) then return end
@@ -537,7 +537,6 @@ local function check_auto_repair() -- TODO: Oil check is broken, JA block need c
 
     if not can_player_act() then
         debug_chat('[AutoRepair] Player Unable To Act')
-        current_state.lastRepairAttempt = now
         return
     end
 
@@ -550,7 +549,7 @@ end
 -- AutoDeploy
 -----------------------------------------
 
-local function has_valid_target() -- TODO: Unused
+local function has_valid_target() --- TODO: Forgot why this is unused, did it work? Test it
     local mob = windower.ffxi.get_mob_by_target and windower.ffxi.get_mob_by_target('t')
     return mob and mob.valid and (mob.hpp or 100) > 0
 end
@@ -558,21 +557,23 @@ end
 local function auto_deploy()
     if not current_state.autoDeploy then return end
     if player.status ~= 'Engaged' or not (pet and pet.isvalid) then return end
+
     local now = os.time()
     if now - current_state.last_deploy_time < DEPLOY_DEBOUNCE then return end
+
     local target = windower.ffxi.get_mob_by_target('t')
     if not (target and target.id) then return end
+
     if target.id == current_state.last_engaged_target_id then return end
 
     current_state.last_engaged_target_id = target.id
     current_state.last_deploy_time = now + DEPLOY_DELAY
 
-    --if player_has_blocking_debuff() then
-    --debug_chat("[AutoManeuver] Player incapacitated. Skipping Auto Deploy.")
-    -- return
-    --end
+    if not can_player_act then
+        debug_chat("[AutoManeuver] Player incapacitated. Skipping Auto Deploy.")
+        return
+    end
 
-    -- Skip if puppet is already engaged
     if puppet_is_engaged() then
         debug_chat('[AutoDeploy] Puppet already engaged. Skipping.')
         return
@@ -592,7 +593,7 @@ end
 
 local function enqueue_maneuver(element)
     if not element then return end
-    
+
     automan.queue[#automan.queue + 1] = element
     debug_chat(string.format("[AutoManeuver] Queued %s maneuver for reapply", element))
 end
@@ -633,6 +634,8 @@ end
 
 -- Called every frame by prerender (see hook above)
 local function auto_maneuver_tick()
+    if not automan.pending and #automan.queue == 0 then return end
+
     -- Abort entirely if puppet is not active
     if not (pet and pet.isvalid and pet.hpp > 0) then
         if #automan.queue > 0 or automan.pending then
@@ -661,7 +664,7 @@ local function auto_maneuver_tick()
 
             if count >= automan.max_retries then
                 debug_chat(string.format("[AutoManeuver] %s failed %d times - giving up.", el, count))
-                dequeue_maneuver(automan.pending.element)
+                dequeue_maneuver(el)
                 automan.retry_counts[el] = nil
             else
                 debug_chat(string.format("[AutoManeuver] %s timeout (attempt %d/%d) - requeueing",
@@ -709,9 +712,9 @@ end
 -- Collect layer keys from an active matrix (engaged/idle → master/pet/masterPet → {layers})
 local function collect_matrix_layers_from(groupNode, collector)
     if type(groupNode) ~= 'table' then return end
-    for _, subTbl in pairs(groupNode) do
-        if type(subTbl) == 'table' then
-            for layerKey, maybeSet in pairs(subTbl) do
+    for _, subTable in pairs(groupNode) do
+        if type(subTable) == 'table' then
+            for layerKey, maybeSet in pairs(subTable) do
                 if type(maybeSet) == 'table' then collector[layerKey] = true end
             end
         end
@@ -729,28 +732,29 @@ local function build_layers()
 
     local layers = ordered_keys(layersSet)
 
-    -- Always inject "None" at the top; do NOT inject "Normal"
+    -- Add default "None" at the top
     DynamicLists.MatrixLayers = { 'None' }
-    for _, v in ipairs(layers) do
-        DynamicLists.MatrixLayers[#DynamicLists.MatrixLayers + 1] = v
+    for _, key in ipairs(layers) do
+        DynamicLists.MatrixLayers[#DynamicLists.MatrixLayers + 1] = key
     end
 
     -- Validate current selection
     local valid = false
-    for _, v in ipairs(DynamicLists.MatrixLayers) do
-        if v == current_state.matrixLayer then
+    for _, key in ipairs(DynamicLists.MatrixLayers) do
+        if key == current_state.matrixLayer then
             valid = true
             break
         end
     end
+
     if not valid then current_state.matrixLayer = 'None' end
 end
 
 -- Build PetMatrix combos/layers from the active matrix
 local function build_pet_matrix_lists()
     DynamicLists.PetMatrixCombos = { 'None' }
-    DynamicLists.PetMatrixLayersByCombo = {}
     DynamicLists.PetMatrixLayers = { 'None' }
+    DynamicLists.PetMatrixLayersByCombo = {}
 
     local currentMatrix = safe_get(_G, 'matrices', current_state.matrixName)
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
@@ -784,34 +788,36 @@ local function build_pet_matrix_lists()
 
     local combos = ordered_keys(combosSet)
 
-    -- Always inject "None" at the top (do not overwrite with a list that lacks None)
-    for _, v in ipairs(combos) do
+    -- Add default "None" at the top
+    for _, key in ipairs(combos) do
         if v ~= 'None' then
-            DynamicLists.PetMatrixCombos[#DynamicLists.PetMatrixCombos + 1] = v
+            DynamicLists.PetMatrixCombos[#DynamicLists.PetMatrixCombos + 1] = key
         end
     end
 
     -- Validate current selection (so state doesn't get stuck on an invalid value)
-    local ok = false
-    for _, v in ipairs(DynamicLists.PetMatrixCombos) do
-        if v == current_state.petMatrixCombo then
-            ok = true; break
+    local comboOk = false
+    for _, key in ipairs(DynamicLists.PetMatrixCombos) do
+        if key == current_state.petMatrixCombo then
+            comboOk = true; break
         end
     end
-    if not ok then current_state.petMatrixCombo = 'None' end
+
+    if not comboOk then current_state.petMatrixCombo = 'None' end
 
     -- Update current combo's layers
     local layers = DynamicLists.PetMatrixLayersByCombo[current_state.petMatrixCombo] or { 'None' }
     DynamicLists.PetMatrixLayers = layers
 
-    local ok = false
+    local layerOk = false
     for _, v in ipairs(layers) do
         if v == current_state.petMatrixLayer then
-            ok = true
+            layerOk = true
             break
         end
     end
-    if not ok then current_state.petMatrixLayer = 'None' end
+
+    if not layerOk then current_state.petMatrixLayer = 'None' end
 end
 
 local function update_pet_matrix_layers_for_combo(combo)
@@ -819,30 +825,34 @@ local function update_pet_matrix_layers_for_combo(combo)
     DynamicLists.PetMatrixLayers = layers
 
     local found = false
-    for _, v in ipairs(layers) do
-        if v == current_state.petMatrixLayer then
+    for _, layerName in ipairs(layers) do
+        if layerName == current_state.petMatrixLayer then
             found = true
             break
         end
     end
+
     if not found then current_state.petMatrixLayer = 'None' end
 end
 
 local function build_custom_layers() -- TODO: Order of custom layers is alphabetical but would prefer they be ordered the same as they are entered in PUP-LIB
-    local list = { 'Off' }
+    local list = { 'None' }
     if sets and sets.layers and sets.layers.CustomLayers then
-        for _, k in ipairs(ordered_keys(sets.layers.CustomLayers)) do list[#list + 1] = k end
+        for _, layerName in ipairs(ordered_keys(sets.layers.CustomLayers)) do list[#list + 1] = layerName end
     end
+
     DynamicLists.CustomLayers = list
+
     -- Validate current
     local ok = false
-    for _, v in ipairs(list) do
-        if v == current_state.customLayer then
+    for _, layerName in ipairs(list) do
+        if layerName == current_state.customLayer then
             ok = true
             break
         end
     end
-    if not ok then current_state.customLayer = 'Off' end
+
+    if not ok then current_state.customLayer = 'None' end
 end
 
 -----------------------------------------
@@ -850,8 +860,8 @@ end
 -----------------------------------------
 local function resolve_gear(state)
     local set = {}
-    local name = ''
-    local now = os.time()
+    local setName = ''
+
     local playerStatus = state.playerStatus
     local petStatus = state.petStatus
     local playerEngaged = playerStatus == 'Engaged'
@@ -870,7 +880,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     if currentMatrix then
         set = currentMatrix.baseSet
-        name = state.matrixName .. '.baseSet'
+        setName = state.matrixName .. '.baseSet'
     end
 
     -------------------------------------------------
@@ -883,15 +893,15 @@ local function resolve_gear(state)
             if playerEngaged and petEngaged then -- Both engaged
                 set = combine_safe(set,
                     safe_get(currentMatrix, engageStatus, 'masterPet', layer))
-                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.masterPet.' .. layer
+                setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.masterPet.' .. layer
             elseif playerEngaged and not petEngaged then -- Player Engaged, Pet Idle
                 set = combine_safe(set,
                     safe_get(currentMatrix, engageStatus, 'master', layer))
-                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.master.' .. layer
+                setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.master.' .. layer
             elseif not playerEngaged and petEngaged then -- Player Idle, Pet Engaged
                 set = combine_safe(set,
                     safe_get(currentMatrix, engageStatus, 'pet', layer))
-                name = ':' .. state.matrixName .. '.' .. engageStatus .. '.pet.' .. layer
+                setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.pet.' .. layer
             end
         end
     end
@@ -907,7 +917,7 @@ local function resolve_gear(state)
         local pmSet = safe_get(petMatrix, engageStatus, petCombo, pmLayer)
         if pmSet and pmSet ~= 'None' then
             set = combine_safe(set, pmSet)
-            name = name ..
+            setName = setName ..
                 '+petMatrix.' ..
                 engageStatus ..
                 '.' .. petCombo .. '.' .. (pmSet == safe_get(petMatrix, engageStatus, petCombo, pmLayer) and pmLayer)
@@ -921,7 +931,7 @@ local function resolve_gear(state)
         local custom = sets.layers.CustomLayers[state.customLayer]
         if custom then
             set = combine_safe(set, custom)
-            name = name .. '+custom.' .. state.customLayer
+            setName = setName .. '+custom.' .. state.customLayer
         end
     end
 
@@ -931,7 +941,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     if Towns[state.currentZoneId] and sets and sets.town then
         set = combine_safe(set, sets.town)
-        name = name .. '+ sets.town'
+        setName = setName .. '+ sets.town'
     end
 
     -------------------------------------------------
@@ -939,7 +949,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     if auto_enmity_state.active and (petEngaged or playerEngaged) then
         set = combine_safe(set, sets.pet.enmity)
-        name = name .. '+ sets.pet.enmity'
+        setName = setName .. '+ sets.pet.enmity'
     end
 
     -------------------------------------------------
@@ -949,7 +959,7 @@ local function resolve_gear(state)
         local petWSSet = currentMatrix.petMatrix.weaponskills[current_state.petType]
         if petWSSet then
             set = combine_safe(set, petWSSet)
-            name = name .. '+ sets.petMatrix.weaponskills.' .. current_state.petType
+            setName = setName .. '+ sets.petMatrix.weaponskills.' .. current_state.petType
         elseif not petWSSet then
             debug_chat('[PUPTrix AutoPetWS]: No matching set found in petmatrix.weaponskills for' ..
                 current_state.petType)
@@ -957,16 +967,16 @@ local function resolve_gear(state)
     end
 
 
-    debug_chat('[PUPTRix Gear] Set: ' .. name .. '')
-    return set, name
+    debug_chat('[PUPTRix Gear] Set: ' .. setName .. '')
+    return set, setName
 end
 
 -----------------------------------------
 -- Equip & Event Handling
 -----------------------------------------
 local function equip_and_update()
-    local set, name = resolve_gear(current_state)
-    current_state.activeSetName = name
+    local set, setName = resolve_gear(current_state)
+    current_state.activeSetName = setName
     equip(set)
     hud_update()
 end
@@ -1083,7 +1093,7 @@ function precast(spell, action, spellMap, eventArgs)
         end
 
         -- AutoManeuver/manual sync handling
-        local now                     = os.time()
+        local now = os.time()
         dequeue_maneuver(automan.pending.element)
         automan.last_use              = now
         automan.pending               = nil
