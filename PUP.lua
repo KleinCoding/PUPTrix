@@ -21,6 +21,9 @@ function get_sets()
 
     -- For Weapon Cycle
     Weapons = {}
+    Weapons.ODVE = { name = "Ohrmazd", augments = { 'Pet: Accuracy+20 Pet: Rng. Acc.+20', 'Pet: Phys. dmg. taken -4%', 'Pet: STR+13 Pet: DEX+13 Pet: VIT+13', } }
+    Weapons.ODSS = "Xiucoatl"
+    Weapons.Counter = "Jolt Counter"
 
     -- Additional values for quick reference of common gear, alter to your gear's level
     Artifact_Foire = {}
@@ -239,6 +242,14 @@ function get_sets()
         back = { name = "Visucius's Mantle", augments = { 'VIT+20', 'Eva.+20 /Mag. Eva.+20', 'VIT+10', 'Enmity+10', 'DEF+50', } },
     }
 
+    customSets.valoredgeWS = {
+        main = { name = "Ohrmazd", augments = { 'Pet: Accuracy+20 Pet: Rng. Acc.+20', 'Pet: Phys. dmg. taken -4%', 'Pet: STR+13 Pet: DEX+13 Pet: VIT+13', } },
+        range = "Animator P II",
+        body = "Pitre Tobe +4",
+        feet = { name = "Naga Kyahan", augments = { 'Pet: HP+100', 'Pet: Accuracy+25', 'Pet: Attack+25', } },
+        left_ear = "Kyrene's Earring",
+        left_ring = "Overbearing Ring",
+    }
     ----------------------------- CUSTOM SETS END --------------------------------
 
     sets.base = customSets.base
@@ -325,7 +336,7 @@ function get_sets()
     }
 
     matrices.overdrive_matrix.petMatrix.weaponskills = { -- If a WS set is provided and autoPetWS toggle is on, WS set will be determined by active puppet type
-        Valor_Valor = {},
+        Valor_Valor = customSets.valoredgeWS,
         Valor_Sharp = customSets.rangerPetWS,
         Sharp_Sharp = customSets.rangerPetWS,
     }
@@ -341,8 +352,8 @@ function get_sets()
     sets.layers.CustomLayers.aMasterDTDEF = customSets.masterDTDEF
     sets.layers.CustomLayers.aMasterDTHP = customSets.tanking
     sets.layers.CustomLayers.dHealing = customSets.healing
-    sets.layers.CustomLayers.bOverdriveVE = customSets.overdriveVE
-    sets.layers.CustomLayers.cOverdriveSS = customSets.overdriveSS
+    sets.layers.CustomLayers.bOverdriveVE = customSets.overdriveVEVE
+    sets.layers.CustomLayers.cOverdriveSS = customSets.overdriveSSSS
 
     ------------------------------------------------------------
     -------------------Town / Cities Sets-----------------------

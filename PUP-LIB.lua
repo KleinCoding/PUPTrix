@@ -66,6 +66,8 @@ local DynamicLists                   = {
     HudViews               = { 'Full', 'SetsOnly', 'Condensed' },
 }
 
+-- TODO: Weapon Cycle
+-- TODO: Animator Cycle
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
 -- TODO: Pet Casting Set Support
 -- TODO: HUD updates. Mini, Lite, and Full modes. Mini only shows sets and abbreviated modes (if on), Lite shows Matrix/Layers & Sets and shows modes (if on). Full shows all data and shows hotkeys
@@ -94,7 +96,6 @@ CURRENT_STATE                        = {
 
     -- Utility Toggles
     debugMode      = false, --TODO: Derive initial value from VARS
-    weaponLock     = true,  --TODO: Derive initial value from VARS
 
     -- Misc
     currentZoneId  = 'None', -- For managing Town sets
@@ -129,6 +130,12 @@ HUD_STATE                            = { -- TODO: Many of these values should be
             alpha = 150
         },
     }
+}
+
+WEAPONCYCLE_STATE                    = {
+    wc_weapon_lock   = true, --TODO: Derive initial value from VARS
+    wc_weapon_list   = Weapons,
+    wc_animator_list = Animators,
 }
 
 AUTOMANEUVER_STATE                   = {
@@ -257,7 +264,6 @@ local function get_repair_cooldown() -- Determines Repair Cooldown
     return AUTOREPAIR_STATE.ar_repair_base_cooldown - (lvl * AUTOREPAIR_STATE.ar_upgrade_reduction)
 end
 
-
 local function update_pet_hp() -- Updates pet HP to state
     local now = os.clock()
     if now - AUTOREPAIR_STATE.ar_pet_hp_timestamp < AUTOREPAIR_STATE.ar_pet_hp_update_interval then return end
@@ -334,8 +340,6 @@ local function format_count_of_choices(cur, list)
     local displayIdx = idx - 1
     return string.format("%s (%d/%d)", cur, displayIdx, realTotal)
 end
-
-
 
 -----------------------------------------
 -- HUD Renderer
@@ -431,7 +435,7 @@ local function hud_update()
         table.insert(lines, align_label("AutoDeploy", AUTODEPLOY_STATE.ad_toggle_on and 'On' or 'Off'))
         table.insert(lines, align_label("Debug", CURRENT_STATE.debugMode and 'On' or 'Off'))
         table.insert(lines, align_label("AutoManeuver", AUTOMANEUVER_STATE.am_toggle_on and 'On' or 'Off'))
-        table.insert(lines, align_label("WeaponLock", CURRENT_STATE.weaponLock and 'On' or 'Off'))
+        table.insert(lines, align_label("WeaponLock", WEAPONCYCLE_STATE.wc_weapon_lock and 'On' or 'Off'))
 
         local threshold = tonumber(AUTOREPAIR_STATE.ar_active_threshold) or 0
         local arText = (threshold == 0) and 'Off' or (string.format("%d%%", threshold))
@@ -478,7 +482,6 @@ local function check_auto_repair() -- TODO: Oil check is broken
     local cd = get_repair_cooldown()
     local elapsed = now - (AUTOREPAIR_STATE.ar_last_used or 0)
     if elapsed < cd then
-        debug_chat(string.format("[AutoRepair] Cooldown active (%.1fs / %.1fs)", elapsed, cd))
         return
     end
 
@@ -946,9 +949,11 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PET WS SWAP SET (Taken from active matrix)
     -------------------------------------------------
-    if AUTOPETWS_STATE.apw_toggle_on and CURRENT_STATE.autoPetWS and AUTOPETWS_STATE.apw_set_active and currentMatrix then
+    if AUTOPETWS_STATE.apw_toggle_on and AUTOPETWS_STATE.apw_set_active and currentMatrix then
         local petWSSet = currentMatrix.petMatrix.weaponskills[PLAYER_STATE.ps_pet_type]
+        debug_chat('----------------------- attempting to equip pet WS')
         if petWSSet then
+             debug_chat('----------------------- attempting to equip pet WS --------- SET FOUND')
             set = combine_safe(set, petWSSet)
             setName = setName .. '+ sets.petMatrix.weaponskills.' .. PLAYER_STATE.ps_pet_type
         elseif not petWSSet then
@@ -1332,7 +1337,7 @@ function lib_init()
     build_custom_layers()
 
     -- Weaponlock
-    if CURRENT_STATE.weaponLock then
+    if WEAPONCYCLE_STATE.wc_weapon_lock then
         disable('main', 'sub')
     end
 
@@ -1602,8 +1607,8 @@ function self_command(cmd)
             CURRENT_STATE.debugMode = not CURRENT_STATE.debugMode
             windower.add_to_chat(122, '[Debug] ' .. (CURRENT_STATE.debugMode and 'On' or 'Off'))
         elseif which == 'weaponlock' then
-            CURRENT_STATE.weaponLock = not CURRENT_STATE.weaponLock
-            if CURRENT_STATE.weaponLock then
+            WEAPONCYCLE_STATE.wc_weapon_lock = not WEAPONCYCLE_STATE.wc_weapon_lock
+            if WEAPONCYCLE_STATE.wc_weapon_lock then
                 disable('main', 'sub')
                 windower.add_to_chat(122, '[WeaponLock] ON - Weapon slots locked')
             else
