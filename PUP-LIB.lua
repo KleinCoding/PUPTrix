@@ -20,7 +20,7 @@ local incoming_text_hook_registered = false
 -----------------------------------------
 -- CONSTS
 -----------------------------------------
-local Towns                   = {
+local Towns         = {
     [246] = "Ru'Lude Gardens",
     [236] = "Port Bastok",
     [50]  = "Port Jeuno",
@@ -29,7 +29,7 @@ local Towns                   = {
     [53]  = "Rabao",
 }
 
-local MANEUVER_MAP            = {
+local MANEUVER_MAP  = {
     ["Fire Maneuver"]    = "Fire",
     ["Water Maneuver"]   = "Water",
     ["Wind Maneuver"]    = "Wind",
@@ -40,7 +40,7 @@ local MANEUVER_MAP            = {
     ["Dark Maneuver"]    = "Dark",
 }
 
-local PUP_HEAD_MAP            = {
+local PUP_HEAD_MAP  = {
     ["Harlequin Head"]    = "Harle",
     ["Valoredge Head"]    = "Valor",
     ["Sharpshot Head"]    = "Sharp",
@@ -49,133 +49,29 @@ local PUP_HEAD_MAP            = {
     ["Spiritreaver Head"] = "Spirit",
 }
 
-local PUP_FRAME_MAP           = {
+local PUP_FRAME_MAP = {
     ["Harlequin Frame"]  = "Harle",
     ["Valoredge Frame"]  = "Valor",
     ["Sharpshot Frame"]  = "Sharp",
     ["Stormwaker Frame"] = "Storm",
 }
 
--- HUD Values
-HUD_OPACITY_ACTIVE            = 0.7 -- Full visibility when active
-HUD_OPACITY_IDLE              = 0.2 -- Dimmed opacity when idle/in town
-HUD_FADE_SPEED                = 1   -- How quickly opacity transitions (lower = slower) -- TODO : Not working
-HUD_BORDER_ALPHA              = 175 -- Border transparency (0–255)
-HUD_BG_ALPHA                  = 80  -- Background transparency (0–255)
-HUD_LABEL_WIDTH               = 20  -- Fixed label width for alignment
-HUD_TEXT_ALPHA                = 150
-HUD_TEXT_STROKE_ALPHA         = 125
-
--- AutoRepair values
-local PET_HP_UPDATE_INTERVAL  = 1.0                   -- once per second
-local AUTO_REPAIR_THRESHHOLDS = { 0, 20, 40, 55, 70 } -- TODO: move to VARs
-local BASE_REPAIR_COOLDOWN    = 90                    -- seconds
-local UPGRADE_REDUCTION       = 3                     -- seconds per upgrade level
-local MAX_UPGRADE_LEVEL       = 5
-local REPAIR_RANGE_YALMS      = 20
-local AUTOREPAIR_SPAM_GUARD   = 3.5 -- seconds TODO: Move to VARs
-
--- AutoDeploy values
-local DEPLOY_COOLDOWN         = 5
-local DEPLOY_DEBOUNCE         = 0.5
-local DEPLOY_DELAY            = 2.5
-
-
-
-------------------------------------------------------------
--- Pet Enmity Auto Swap State Tracking
-------------------------------------------------------------
---// Need to track Flashbulb/Strobe cooldown even when feature is off? Otherwise logic assumes the voke/flash are ready when turned on mid combat
-local Flashbulb_Timer = 45
-local Strobe_Timer = 30
-local Flashbulb_Recast = 0
-local Strobe_Recast = 0
-local Flashbulb_Time = 0
-local Strobe_Time = 0
-local PET_ENMITY_WINDOW = 3 -- seconds to hold enmity gear TODO: Move to -VARS file
-
-local auto_enmity_state = {
-    active = false,
-    ability = nil, -- 'Strobe' or 'Flashbulb'
-    timer = 0      -- expiration timestamp
-}
-
------------------------------------------
--- Pet Weaponskill AutoSwap State Tracking
------------------------------------------
-local PET_WS_TP_THRESHOLD = 990 -- configurable trigger TP (e.g. 900/1000) TODO: Move to VARS file
-local PET_WS_ACTIVE_WINDOW = 4  -- seconds to stay in WS gear before check TODO: Move to VARS File
-local PET_WS_LOCKOUT = 3        -- seconds after WS before allowing reactivation TODO: Move to VARS file
-local last_pet_ws_time = 0
-local pet_ws_active = false
-
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
--- TODO: Remove HUD opacity change smoothing logic
 -- TODO: Pet Casting Set Support
 -- TODO: HUD updates. Mini, Lite, and Full modes. Mini only shows sets and abbreviated modes (if on), Lite shows Matrix/Layers & Sets and shows modes (if on). Full shows all data and shows hotkeys
--- TODO: Remove old logic for dynamic HUD opacity
 -- TODO: Commands to alter HUD position/opacity via ingame command
--- TODO: Cleanup state values
 -- TODO: AutoPetWS: If lockout is 0, disable lockout logic/keep set on
 -- TODO: Move HUD code to HUD file
 -- TODO: Consume varialbes from -VARS file
+-- TODO: Kiting Mode
+-- TODO: Emergency DT Set Button
+-- TODO: Track Flashbulb/Strobe cooldown even when feature is off? Otherwise logic assumes the voke/flash are ready when turned on mid combat
+
 
 -----------------------------------------
 -- State
 -----------------------------------------
-
-HUD_STATE = {
-    hud_view     = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
-    hud_set_name = 'None', -- Text string of current sets, for HUD display
-}
-
-AUTOMANEUVER_STATE = {
-    am_toggle_on       = false,
-    am_queue           = {},  -- FIFO of elements to reapply
-    am_last_attempt    = 0,   -- os.time() of last attempt (player or script)
-    am_cooldown        = 11,  -- seconds between maneuvers
-    am_retry_delay     = 3,   -- seconds to wait before retrying a failed attempt
-    am_pending         = nil, -- { element="<Elem>", issued_at=timestamp }
-    am_pending_window  = 4,   -- seconds allowed for buff to appear after issuing
-    am_suppress_until  = 0,   -- timestamp; while now < this, ignore buff-loss queues
-    am_suppress_window = 3,   -- seconds to ignore loss events after a manual JA
-    am_retry_counts    = {},  -- { ["Fire"] = 1, ["Water"] = 3, ... }
-    am_max_retries     = 3,   -- TODO: Take from VARs
-}
-
-AUTODEPLOY_STATE = {
-    ad_toggle_on              = false,
-    ad_last_deploy_timestamp  = 0,
-    ad_last_engaged_target_id = 0,
-}
-
-AUTOENMITY_STATE = {
-    ae_toggle_on = false
-}
-
-AUTOREPAIR_STATE = {
-    ar_threshold         = 0, -- AUTO_REPAIR_THRESHHOLDS = {0, 20, 40, 55, 70}
-    ar_cooldown_upgrades = 5, -- 0–5; each level reduces cooldown by 3 s -- TODO: Make settings const
-    ar_last_attempt      = 0, -- timestamp of last repair attempt (whether success or fail)
-    ar_last_used         = 0, -- timestamp of last successful repair
-    ar_pet_hp_timestamp  = 0, -- timestamp of last time script updated petHP value
-}
-
-AUTOPETWS_STATE = {
-    apw_toggle_on = false,
-    apw_set_active = false,
-    apw_timer = 0,
-    apw_lockout = 0 --TODO: make a user config, and add 'overdriveLockout' for OD scenarios TODO: If lockout is 0, disable lockout logic/keep set on
-}
-
-PLAYER_STATE = {
-    ps_player_status = 'Idle', -- Current player state - Idle, Engaged
-    ps_pet_status    = 'None', -- Current pet state - None, Idle, Engaged
-    ps_pet_type      = '',     -- Current Pet Type - Valor_Valor, Sharp_Valor, Storm_Storm, etc.
-    ps_pet_hp        = 0,
-}
-
-CURRENT_STATE = {
+CURRENT_STATE       = {
     -- Matrix & Matrix Layers state
     matrixName     = 'gear_matrix', -- the key in global `matrices` to use
     matrixLayer    = 'None',        -- key for active matrix layer
@@ -193,6 +89,87 @@ CURRENT_STATE = {
 
     -- Misc
     currentZoneId  = 'None', -- For managing Town sets
+}
+
+PLAYER_STATE        = {
+    ps_player_status = 'Idle', -- Current player state - Idle, Engaged
+    ps_pet_status    = 'None', -- Current pet state - None, Idle, Engaged
+    ps_pet_type      = '',     -- Current Pet Type - Valor_Valor, Sharp_Valor, Storm_Storm, etc.
+    ps_pet_hp        = 0,
+}
+
+HUD_STATE           = {
+    hud_view              = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
+    hud_set_name          = 'None', -- Text string of current sets, for HUD display
+    hud_border_alpha      = 175,    -- Border transparency (0–255)
+    hud_bg_alpha          = 80,     -- Background transparency (0–255)
+    hud_label_width       = 20,     -- Fixed label width for alignment
+    hud_text_alpha        = 150,
+    hud_text_stroke_alpha = 125,
+}
+
+AUTOMANEUVER_STATE  = {
+    am_toggle_on       = false,
+    am_queue           = {},  -- FIFO of elements to reapply
+    am_last_attempt    = 0,   -- os.time() of last attempt (player or script)
+    am_cooldown        = 11,  -- seconds between maneuvers
+    am_retry_delay     = 3,   -- seconds to wait before retrying a failed attempt
+    am_pending         = nil, -- { element="Fire", issued_at=timestamp }
+    am_pending_window  = 3,   -- seconds allowed for buff to appear after issuing
+    am_suppress_until  = 0,   -- timestamp; while now < this, ignore buff-loss queues
+    am_suppress_window = 3,   -- seconds to ignore loss events after a manual JA
+    am_retry_counts    = {},  -- { ["Fire"] = 1, ["Water"] = 3, ... }
+    am_max_retries     = 3,   -- TODO: Take from VARs
+}
+
+AUTODEPLOY_STATE    = {
+    ad_toggle_on              = false,
+    ad_last_deploy_timestamp  = 0,
+    ad_last_engaged_target_id = 0,
+    ad_deploy_cooldown        = 5,   --TODO: VARs
+    ad_debounce_time          = 0.5, -- TODO: VARs
+    ad_deploy_delay           = 2.5, -- TODO: VARs
+}
+
+AUTOENMITY_STATE    = {
+    ae_toggle_on = false,
+    ae_window_open = false,
+    ae_tracked_ability = nil,    -- 'Strobe' or 'Flashbulb'
+    ae_expiration_timestamp = 0, -- expiration timestamp
+    ae_flashbulb_cd = 45,
+    ae_flashbulb_lockout = 0,
+    ae_flashbulb_timestamp = 0,
+    ae_strobe_cd = 45,
+    ae_strobe_lockout = 0,
+    ae_strobe_timestamp = 0,
+    ae_equip_window = 3 -- TODO: VARs
+}
+
+AUTOREPAIR_STATE    = {
+    ar_active_threshold       = 0,                     -- AUTOREPAIR_STATE.ar_thresholds = {0, 20, 40, 55, 70}
+    ar_cooldown_upgrades      = 5,                     -- 0–5; each level reduces cooldown by 3 s -- TODO: Make settings const
+    ar_last_attempt           = 0,                     -- timestamp of last repair attempt (whether success or fail)
+    ar_last_used              = 0,                     -- timestamp of last successful repair
+    ar_pet_hp_timestamp       = 0,                     -- timestamp of last time script updated petHP value
+    ar_pet_hp_update_interval = 1.0,                   -- Once per second
+    ar_thresholds             = { 0, 20, 40, 55, 70 }, -- TODO: move to VARs
+    ar_repair_base_cooldown   = 90,
+    ar_upgrade_reduction      = 3,
+    ar_max_upgrade_level      = 5,
+    ar_repair_range           = 20,
+    ar_spamguard_lockout      = 3.5 -- TODO: VARs
+}
+
+AUTOPETWS_STATE     = {
+    apw_toggle_on = false,
+    apw_set_active = false,
+    apw_timer = 0,
+    apw_lockout = 0,        --TODO: make a user config, and add 'overdriveLockout' for OD scenarios TODO: If lockout is 0, disable lockout logic/keep set on
+    apw_tp_threshold = 990, -- configurable trigger TP (e.g. 900/1000) TODO: Move to VARS file
+    apw_active_window = 4,  -- seconds to stay in WS gear before check TODO: Move to VARS File
+    apw_lockout_window = 3, -- UNUSED seconds after WS before allowing reactivation TODO: Move to VARS file
+    apw_last_ws_time = 0,   -- UNUSED
+    apw_ws_window = false,  -- UNUSED
 }
 
 -----------------------------------------
@@ -253,14 +230,14 @@ local function player_has_oil() -- TODO: Tie to settings for bags#s -- NOT WORKI
 end
 
 local function get_repair_cooldown() -- Determines Repair Cooldown
-    local lvl = math.min(AUTOREPAIR_STATE.ar_cooldown_upgrades or 0, MAX_UPGRADE_LEVEL)
-    return BASE_REPAIR_COOLDOWN - (lvl * UPGRADE_REDUCTION)
+    local lvl = math.min(AUTOREPAIR_STATE.ar_cooldown_upgrades or 0, AUTOREPAIR_STATE.ar_max_upgrade_level)
+    return AUTOREPAIR_STATE.ar_repair_base_cooldown - (lvl * AUTOREPAIR_STATE.ar_upgrade_reduction)
 end
 
 
 local function update_pet_hp() -- Updates pet HP to state
     local now = os.clock()
-    if now - AUTOREPAIR_STATE.ar_pet_hp_timestamp < PET_HP_UPDATE_INTERVAL then return end
+    if now - AUTOREPAIR_STATE.ar_pet_hp_timestamp < AUTOREPAIR_STATE.ar_pet_hp_update_interval then return end
     AUTOREPAIR_STATE.ar_pet_hp_timestamp = now
 
     local pet_mob = windower.ffxi.get_mob_by_target('pet')
@@ -311,16 +288,16 @@ end
 -----------------------------------------
 local hud_settings = {
     pos   = { x = 2200, y = 700 },
-    bg    = { alpha = HUD_BG_ALPHA, red = 20, green = 20, blue = 20 },
+    bg    = { alpha = HUD_STATE.hud_bg_alpha, red = 20, green = 20, blue = 20 },
     flags = { draggable = true },
     text  = {
         font = 'Consolas',
         size = 10,
-        stroke = { width = 1, alpha = HUD_TEXT_STROKE_ALPHA },
+        stroke = { width = 1, alpha = HUD_STATE.hud_text_stroke_alpha },
         red = 255,
         green = 255,
         blue = 255,
-        alpha = HUD_TEXT_ALPHA
+        alpha = HUD_STATE.hud_text_alpha
     },
 }
 local hud = nil
@@ -366,13 +343,10 @@ end
 
 
 local function align_label(label, value) -- Label alignment
-    return string.format("%-" .. HUD_LABEL_WIDTH .. "s %s", label .. ":", value or "")
+    return string.format("%-" .. HUD_STATE.hud_label_width .. "s %s", label .. ":", value or "")
 end
 
 
-local function set_opacity(active) -- Opacity helpers -- TODO: Opacity not working as expected, probably bets to remove
-    opacity_target = active and HUD_OPACITY_ACTIVE or HUD_OPACITY_IDLE
-end
 
 -----------------------------------------
 -- HUD Renderer
@@ -465,7 +439,7 @@ local function hud_update()
         table.insert(lines, align_label("AutoManeuver", AUTOMANEUVER_STATE.am_toggle_on and 'On' or 'Off'))
         table.insert(lines, align_label("WeaponLock", CURRENT_STATE.weaponLock and 'On' or 'Off'))
 
-        local threshold = tonumber(AUTOREPAIR_STATE.ar_threshold) or 0
+        local threshold = tonumber(AUTOREPAIR_STATE.ar_active_threshold) or 0
         local arText = (threshold == 0) and 'Off' or (string.format("%d%%", threshold))
         table.insert(lines, align_label("AutoRepair", arText))
 
@@ -495,7 +469,7 @@ end
 -----------------------------------------
 
 local function check_auto_repair() -- TODO: Oil check is broken
-    local th = tonumber(AUTOREPAIR_STATE.ar_threshold) or 0
+    local th = tonumber(AUTOREPAIR_STATE.ar_active_threshold) or 0
     if th == 0 then return end
     if not (pet and pet.isvalid and (PLAYER_STATE.ps_pet_hp or 0) > 0) then return end
 
@@ -504,7 +478,7 @@ local function check_auto_repair() -- TODO: Oil check is broken
 
     -- spam guard
     local now = os.time()
-    if now - (AUTOREPAIR_STATE.ar_last_attempt or 0) < AUTOREPAIR_SPAM_GUARD then return end
+    if now - (AUTOREPAIR_STATE.ar_last_attempt or 0) < AUTOREPAIR_STATE.ar_spamguard_lockout then return end
 
     -- Cooldown check --
     local cd = get_repair_cooldown()
@@ -517,7 +491,7 @@ local function check_auto_repair() -- TODO: Oil check is broken
     -- Check if player has oil first
     --if not has_oil() then
     -- windower.add_to_chat(167, '[AutoRepair] No Automaton Oil +3 found! AutoRepair disabled.')
-    -- AUTOREPAIR_STATE.ar_threshold= 0
+    -- AUTOREPAIR_STATE.ar_active_threshold= 0
     --  hud_update()
     --  return
     --end
@@ -526,7 +500,7 @@ local function check_auto_repair() -- TODO: Oil check is broken
     local pet_mob = windower.ffxi.get_mob_by_target('pet')
     if not pet_mob or not pet_mob.valid_target then return end
     local distance = math.sqrt(pet_mob.distance or 0)
-    if distance > REPAIR_RANGE_YALMS then
+    if distance > AUTOREPAIR_STATE.ar_repair_range then
         debug_chat(string.format('[AutoRepair] Pet too far (%.1f yalms). Skipping Repair.', distance))
         return
     end
@@ -555,7 +529,7 @@ local function auto_deploy()
     if player.status ~= 'Engaged' or not (pet and pet.isvalid) then return end
 
     local now = os.time()
-    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < DEPLOY_DEBOUNCE then return end
+    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < AUTODEPLOY_STATE.ad_debounce_time then return end
 
     local target = windower.ffxi.get_mob_by_target('t')
     if not (target and target.id) then return end
@@ -563,7 +537,7 @@ local function auto_deploy()
     if target.id == AUTODEPLOY_STATE.ad_last_engaged_target_id then return end
 
     AUTODEPLOY_STATE.ad_last_engaged_target_id = target.id
-    AUTODEPLOY_STATE.ad_last_deploy_timestamp = now + DEPLOY_DELAY
+    AUTODEPLOY_STATE.ad_last_deploy_timestamp = now + AUTODEPLOY_STATE.ad_deploy_delay
 
     if not can_player_act then
         debug_chat("[AutoManeuver] Player incapacitated. Skipping Auto Deploy.")
@@ -575,8 +549,8 @@ local function auto_deploy()
         return
     end
 
-    send_command('@wait ' .. tostring(DEPLOY_DELAY) .. '; gs c __auto_deploy_fire')
-    debug_chat(string.format('[AutoDeploy] Triggered for new target (delay %.1f sec)', DEPLOY_DELAY))
+    send_command('@wait ' .. tostring(AUTODEPLOY_STATE.ad_deploy_delay) .. '; gs c __auto_deploy_fire')
+    debug_chat(string.format('[AutoDeploy] Triggered for new target (delay %.1f sec)', AUTODEPLOY_STATE.ad_deploy_delay))
 end
 
 -----------------------------------------
@@ -628,7 +602,7 @@ local function try_cast_next_maneuver()
     debug_chat(string.format("[AutoManeuver] Attempting %s Maneuver", element))
 end
 
--- Called every frame by prerender (see hook above)
+-- Called every frame by prerender hook
 local function auto_maneuver_tick()
     if not AUTOMANEUVER_STATE.am_pending and #AUTOMANEUVER_STATE.am_queue == 0 then return end
 
@@ -677,7 +651,7 @@ local function auto_maneuver_tick()
 end
 
 -----------------------------------------
--- Dynamic Builders
+-- Dynamic Builders -- TODO: Make utils easier to read, maybe make some utils to replicate javascript array methods
 -----------------------------------------
 
 -- Build list of matrix names from global `matrices` (tables only)
@@ -970,7 +944,7 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PET ENMITY SET
     -------------------------------------------------
-    if auto_enmity_state.active and (petEngaged or playerEngaged) then
+    if AUTOENMITY_STATE.ae_window_open and (petEngaged or playerEngaged) then
         set = combine_safe(set, sets.pet.enmity)
         setName = setName .. '+ sets.pet.enmity'
     end
@@ -1006,7 +980,6 @@ end
 
 function status_change(new, old)
     PLAYER_STATE.ps_player_status = new
-    set_opacity(new == 'Engaged')
 
     if new == 'Engaged' and AUTODEPLOY_STATE.ad_toggle_on then auto_deploy() end
     if new == 'Engaged' then equip_and_update() end
@@ -1072,7 +1045,7 @@ function pet_change(p, gain)
             end
 
             -- Clear auto enmity set statuses when puppet deactivated/dies
-            if auto_enmity_state.active then
+            if AUTOENMITY_STATE.ae_window_open then
                 debug_chat("[AutoEnmity] Puppet lost — Resetting Enmity Tracking")
 
                 auto_enmity_state = {
@@ -1185,7 +1158,7 @@ function precast(spell, action, spellMap, eventArgs)
     end
 
     ------------------------------------------------------------
-    -- AutoPetWS Edge Case: Prime Pet WS gear before Deploy to avoid race condition with pet status
+    -- AutoPetWS
     ------------------------------------------------------------
     if spell and spell.english == 'Deploy' then
         local pettp = (pet and pet.isvalid and pet.tp) or 0
@@ -1197,7 +1170,7 @@ function precast(spell, action, spellMap, eventArgs)
             return
         end
 
-        if AUTOPETWS_STATE.apw_toggle_on and pettp >= PET_WS_TP_THRESHOLD then
+        if AUTOPETWS_STATE.apw_toggle_on and pettp >= AUTOPETWS_STATE.apw_tp_threshold then
             local wsSet = get_pet_ws_set()
             if wsSet then
                 -- Equip immediately so gear is on before Deploy executes
@@ -1205,12 +1178,12 @@ function precast(spell, action, spellMap, eventArgs)
 
                 PLAYER_STATE.ps_pet_status = 'Engaged'
                 AUTOPETWS_STATE.apw_set_active = true
-                AUTOPETWS_STATE.apw_timer = os.time() + PET_WS_ACTIVE_WINDOW
+                AUTOPETWS_STATE.apw_timer = os.time() + AUTOPETWS_STATE.apw_active_window
 
 
                 debug_chat(string.format(
                     "[AutoPetWS] Primed on Deploy (TP=%d >= %d). Equipping WS set before Deploy.",
-                    pettp, PET_WS_TP_THRESHOLD
+                    pettp, AUTOPETWS_STATE.apw_tp_threshold
                 ))
             else
                 debug_chat("[AutoPetWS] Deploy prime: no WS set found for petType=" .. tostring(PLAYER_STATE.ps_pet_type))
@@ -1332,7 +1305,7 @@ function target_change(new_id)
 
     -- tiny debounce to avoid spam on rapid target swaps
     local now = os.clock()
-    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < DEPLOY_COOLDOWN then return end
+    if now - AUTODEPLOY_STATE.ad_last_deploy_timestamp < AUTODEPLOY_STATE.ad_deploy_cooldown then return end
     AUTODEPLOY_STATE.ad_last_deploy_timestamp = now
 
     -- Skip if puppet is already engaged
@@ -1353,8 +1326,8 @@ function lib_init()
         hud = texts.new(hud_settings)
         hud:bg_visible(true)
         hud:bg_color(30, 30, 30)
-        hud:bg_alpha(HUD_BG_ALPHA)
-        hud:stroke_color(200, 200, 200, HUD_BORDER_ALPHA)
+        hud:bg_alpha(HUD_STATE.hud_bg_alpha)
+        hud:stroke_color(200, 200, 200, HUD_STATE.hud_border_alpha)
         hud:color(255, 255, 255, 255)
     end
 
@@ -1386,48 +1359,54 @@ if not prerender_registered and windower and windower.register_event then
             auto_maneuver_tick()
         end
 
-        if AUTOREPAIR_STATE.ar_threshold ~= 0 then
+        if AUTOREPAIR_STATE.ar_active_threshold ~= 0 then
             update_pet_hp()
             check_auto_repair()
         end
 
         -- Pet JA Tracking
-        if Strobe_Recast > 0 then Strobe_Recast = Strobe_Timer - (now - Strobe_Time) end
-        if Flashbulb_Recast > 0 then Flashbulb_Recast = Flashbulb_Timer - (now - Flashbulb_Time) end
+        if AUTOENMITY_STATE.ae_strobe_lockout > 0 then
+            AUTOENMITY_STATE.ae_strobe_lockout = AUTOENMITY_STATE
+                .ae_strobe_cd - (now - AUTOENMITY_STATE.ae_strobe_timestamp)
+        end
+        if AUTOENMITY_STATE.ae_flashbulb_lockout > 0 then
+            AUTOENMITY_STATE.ae_flashbulb_lockout = AUTOENMITY_STATE
+                .ae_flashbulb_cd - (now - AUTOENMITY_STATE.ae_flashbulb_timestamp)
+        end
 
 
         -- Auto Pet Enmity Set Logic
         if pet and pet.isvalid and player.hpp > 0 and puppet_is_engaged() and AUTOENMITY_STATE.ae_toggle_on then
-            if not auto_enmity_state.active then
-                if buffactive["Fire Maneuver"] and (pet.attachments.strobe or pet.attachments["strobe II"]) and Strobe_Recast <= 1 then
-                    auto_enmity_state.active = true
-                    auto_enmity_state.ability = "Strobe"
-                    auto_enmity_state.timer = os.time() + PET_ENMITY_WINDOW
+            if not AUTOENMITY_STATE.ae_window_open then
+                if buffactive["Fire Maneuver"] and (pet.attachments.strobe or pet.attachments["strobe II"]) and AUTOENMITY_STATE.ae_strobe_lockout <= 1 then
+                    AUTOENMITY_STATE.ae_window_open = true
+                    AUTOENMITY_STATE.ae_tracked_ability = "Strobe"
+                    AUTOENMITY_STATE.ae_expiration_timestamp = os.time() + AUTOENMITY_STATE.ae_equip_window
                     debug_chat("[AutoEnmity] Strobe - Enmity Gear Window Open")
                     equip_and_update()
-                elseif buffactive["Light Maneuver"] and pet.attachments.flashbulb and Flashbulb_Recast <= 1 then
-                    auto_enmity_state.active = true
-                    auto_enmity_state.ability = "Flashbulb"
-                    auto_enmity_state.timer = os.time() + PET_ENMITY_WINDOW
+                elseif buffactive["Light Maneuver"] and pet.attachments.flashbulb and AUTOENMITY_STATE.ae_flashbulb_lockout <= 1 then
+                    AUTOENMITY_STATE.ae_window_open = true
+                    AUTOENMITY_STATE.ae_tracked_ability = "Flashbulb"
+                    AUTOENMITY_STATE.ae_expiration_timestamp = os.time() + AUTOENMITY_STATE.ae_equip_window
                     debug_chat("[AutoEnmity] Flashbulb - Enmity Gear Window Open")
                     equip_and_update()
                 end
             else
                 -- expiration
-                if os.time() > auto_enmity_state.timer then
+                if os.time() > AUTOENMITY_STATE.ae_expiration_timestamp then
                     debug_chat("[AutoEnmity] Window expired - Enmity Gear Window Closed")
-                    auto_enmity_state.active = false
-                    auto_enmity_state.ability = nil
-                    auto_enmity_state.timer = 0
+                    AUTOENMITY_STATE.ae_window_open = false
+                    AUTOENMITY_STATE.ae_tracked_ability = nil
+                    AUTOENMITY_STATE.ae_expiration_timestamp = 0
                     equip_and_update()
                 end
             end
         elseif AUTOENMITY_STATE.ae_toggle_on
             and (player.hpp <= 0 or not pet or not pet.isvalid) then
             debug_chat("[AutoEnmity] Player / Pet dead or invalid - Enmity Gear Window Closed")
-            auto_enmity_state.active = false
-            auto_enmity_state.ability = nil
-            auto_enmity_state.timer = 0
+            AUTOENMITY_STATE.ae_window_open = false
+            AUTOENMITY_STATE.ae_tracked_ability = nil
+            AUTOENMITY_STATE.ae_expiration_timestamp = 0
             equip_and_update()
         end
 
@@ -1444,21 +1423,22 @@ if not prerender_registered and windower and windower.register_event then
         -- if now < AUTOPETWS_STATE.apw_lockout then return end
 
         -- Enter Pet WS Mode
-        if not AUTOPETWS_STATE.apw_set_active and pettp >= PET_WS_TP_THRESHOLD and puppet_is_engaged() then
+        if not AUTOPETWS_STATE.apw_set_active and pettp >= AUTOPETWS_STATE.apw_tp_threshold and puppet_is_engaged() then
             if petInhibitor and playertp >= 899 then
                 -- When Inhibitors are equipped puppet will not WS if player has > 899 TP, so we do not equip the pet WS set
                 return
             end
 
             AUTOPETWS_STATE.apw_set_active = true
-            AUTOPETWS_STATE.apw_timer = now + PET_WS_ACTIVE_WINDOW
-            debug_chat(string.format("[AutoPetWS] Pet TP %d >= %d, swapping to WS set", pettp, PET_WS_TP_THRESHOLD))
+            AUTOPETWS_STATE.apw_timer = now + AUTOPETWS_STATE.apw_active_window
+            debug_chat(string.format("[AutoPetWS] Pet TP %d >= %d, swapping to WS set", pettp,
+                AUTOPETWS_STATE.apw_tp_threshold))
             equip_and_update()
             return
         end
 
         -- Exit after timer or TP drop or pet leaving combat
-        if AUTOPETWS_STATE.apw_set_active and (pettp < PET_WS_TP_THRESHOLD or now > AUTOPETWS_STATE.apw_timer) then
+        if AUTOPETWS_STATE.apw_set_active and (pettp < AUTOPETWS_STATE.apw_tp_threshold or now > AUTOPETWS_STATE.apw_timer) then
             debug_chat("[AutoPetWS] Pet WS window ended - reverting gear")
             AUTOPETWS_STATE.apw_set_active = false
             AUTOPETWS_STATE.apw_lockout = now -- No lockout time applied in this scenario
@@ -1505,24 +1485,24 @@ if not incoming_text_hook_registered and windower and windower.register_event th
         if not original:contains(pet.name) then return end
 
         if original:contains("Provoke") then
-            Strobe_Time = os.time()
-            Strobe_Recast = Strobe_Timer
+            AUTOENMITY_STATE.ae_strobe_timestamp = os.time()
+            AUTOENMITY_STATE.ae_strobe_lockout = AUTOENMITY_STATE.ae_strobe_cd
 
             debug_chat("[AutoEnmity] Strobe fired - Enmity Set Removed!")
-            auto_enmity_state.active = false
-            auto_enmity_state.ability = nil
-            auto_enmity_state.timer = 0
+            AUTOENMITY_STATE.ae_window_open = false
+            AUTOENMITY_STATE.ae_tracked_ability = nil
+            AUTOENMITY_STATE.ae_expiration_timestamp = 0
 
             equip_and_update()
         elseif original:contains("Flashbulb") then
-            Flashbulb_Time = os.time()
-            Flashbulb_Recast = Flashbulb_Timer
+            AUTOENMITY_STATE.ae_flashbulb_timestamp = os.time()
+            AUTOENMITY_STATE.ae_flashbulb_lockout = AUTOENMITY_STATE.ae_flashbulb_cd
 
 
             debug_chat("[AutoEnmity] Flashbulb fired - Enmity Set Removed!")
-            auto_enmity_state.active = false
-            auto_enmity_state.ability = nil
-            auto_enmity_state.timer = 0
+            AUTOENMITY_STATE.ae_window_open = false
+            AUTOENMITY_STATE.ae_tracked_ability = nil
+            AUTOENMITY_STATE.ae_expiration_timestamp = 0
             equip_and_update()
         end
     end)
@@ -1578,8 +1558,8 @@ function self_command(cmd)
             hud_update()
             windower.add_to_chat(122, string.format('[PUPtrix] HUD View set to %s', HUD_STATE.hud_view))
         elseif which == 'autorepair' then
-            local thresholds = AUTO_REPAIR_THRESHHOLDS
-            local cur = AUTOREPAIR_STATE.ar_threshold or 0
+            local thresholds = AUTOREPAIR_STATE.ar_thresholds
+            local cur = AUTOREPAIR_STATE.ar_active_threshold or 0
             local idx = 1
             for i, v in ipairs(thresholds) do
                 if v == cur then
@@ -1587,10 +1567,10 @@ function self_command(cmd)
                     break
                 end
             end
-            AUTOREPAIR_STATE.ar_threshold = thresholds[(idx % #thresholds) + 1]
+            AUTOREPAIR_STATE.ar_active_threshold = thresholds[(idx % #thresholds) + 1]
 
-            local disp = (AUTOREPAIR_STATE.ar_threshold == 0) and 'Off'
-                or (tostring(AUTOREPAIR_STATE.ar_threshold) .. '%')
+            local disp = (AUTOREPAIR_STATE.ar_active_threshold == 0) and 'Off'
+                or (tostring(AUTOREPAIR_STATE.ar_active_threshold) .. '%')
 
             windower.add_to_chat(122, '[AutoRepair] Threshold: ' .. disp)
             hud_update()
