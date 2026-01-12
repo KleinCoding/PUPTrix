@@ -11,11 +11,9 @@ local texts = require('texts')
 -- Hook booleans --
 -----------------------------------------
 local target_change_event_registered = false
-local pet_buffs_hook_registered = false
 local prerender_registered = false
 local zone_change_hook_registered = false
 local incoming_text_hook_registered = false
-local item_use_hook_registered = false
 
 
 
@@ -116,15 +114,10 @@ local pet_ws_active = false
 
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
 -- TODO: Remove HUD opacity change smoothing logic
--- TODO: BLOCKING DEBUFFS. Prevent AutoManeuver, AutoDeploy, AutoRepair when affected by hard CC. Docs say check by name not ID
 
 -- TODO: Pet Casting Set Support
 
 -- TODO: HUD updates. Mini, Lite, and Full modes. Mini only shows sets and abbreviated modes (if on), Lite shows Matrix/Layers & Sets and shows modes (if on). Full shows all data and shows hotkeys
--- Should do Pet Type tracking next. Determine Pet Head/Body and store in state. Incorporate into PetMatrix determination and Pet WS set
-
--- TODO: For Matrixes, add a flag to gear matrix layers (priority) that when true, ensures that the layer takes precidence over pet matrix layers.
--- This is to ensure DT sets etc ignore active pet layer and get used first. Dalm's idea
 
 -----------------------------------------
 -- State
@@ -636,7 +629,6 @@ end
 local function auto_maneuver_tick()
     if not automan.pending and #automan.queue == 0 then return end
 
-    -- Abort entirely if puppet is not active
     if not (pet and pet.isvalid and pet.hpp > 0) then
         if #automan.queue > 0 or automan.pending then
             debug_chat("[AutoManeuver] Puppet inactive — clearing queue/pending")
@@ -647,7 +639,6 @@ local function auto_maneuver_tick()
         return
     end
 
-    -- Abort if player can't act
     if not can_player_act() then
         return
     end
@@ -673,6 +664,7 @@ local function auto_maneuver_tick()
                 enqueue_maneuver(el)
             end
         end
+
         return
     end
 
@@ -694,14 +686,15 @@ local function build_matrices()
             end
         end
     end
+
     table.sort(list)
     if #list == 0 then list = { 'gear_matrix' } end -- fallback name
     DynamicLists.Matrices = list
 
     -- Validate/adjust current matrixName
     local found = false
-    for _, v in ipairs(list) do
-        if v == current_state.matrixName then
+    for _, matrixName in ipairs(list) do
+        if matrixName == current_state.matrixName then
             found = true
             break
         end
@@ -790,7 +783,7 @@ local function build_pet_matrix_lists()
 
     -- Add default "None" at the top
     for _, key in ipairs(combos) do
-        if v ~= 'None' then
+        if key ~= 'None' then
             DynamicLists.PetMatrixCombos[#DynamicLists.PetMatrixCombos + 1] = key
         end
     end
@@ -861,14 +854,12 @@ end
 local function resolve_gear(state)
     local set = {}
     local setName = ''
+    local priorityLayer = nil
 
-    local playerStatus = state.playerStatus
-    local petStatus = state.petStatus
-    local playerEngaged = playerStatus == 'Engaged'
-    local petEngaged = petStatus == 'Engaged'
+    local playerEngaged =  state.playerStatus == 'Engaged'
+    local petEngaged = state.petStatus == 'Engaged'
     local engageStatus = (playerEngaged or petEngaged) and 'engaged' or 'idle'
 
-    -- Select active matrix table
     local currentMatrix = safe_get(_G, 'matrices', state.matrixName)
     if not currentMatrix then
         debug_chat('[GS] - Active matrix "' .. tostring(state.matrixName) .. '" not found.')
@@ -886,21 +877,41 @@ local function resolve_gear(state)
     -------------------------------------------------
     -- PRIMARY MATRIX LAYER
     -------------------------------------------------
-    if currentMatrix then
+    if currentMatrix then -- TODO: Make a util to format all these strings for the HUD sets display
         local layer = state.matrixLayer or 'None'
 
         if layer ~= 'None' then
             if playerEngaged and petEngaged then -- Both engaged
-                set = combine_safe(set,
-                    safe_get(currentMatrix, engageStatus, 'masterPet', layer))
+                local newSet = safe_get(currentMatrix, engageStatus, 'masterPet', layer) or {}
+                if newSet.priority then
+                    priorityLayer = newSet
+                end
+
+                set = combine_safe(set, newSet)
                 setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.masterPet.' .. layer
             elseif playerEngaged and not petEngaged then -- Player Engaged, Pet Idle
-                set = combine_safe(set,
-                    safe_get(currentMatrix, engageStatus, 'master', layer))
+                local newSet = safe_get(currentMatrix, engageStatus, 'master', layer) or {}
+                if newSet.priority then
+                    priorityLayer = newSet
+                end
+
+                set = combine_safe(set, newSet)
                 setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.master.' .. layer
             elseif not playerEngaged and petEngaged then -- Player Idle, Pet Engaged
-                set = combine_safe(set,
-                    safe_get(currentMatrix, engageStatus, 'pet', layer))
+                local newSet = safe_get(currentMatrix, engageStatus, 'pet', layer) or {}
+                if newSet.priority then
+                    priorityLayer = newSet
+                end
+
+                set = combine_safe(set, newSet)
+                setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.pet.' .. layer
+            elseif not playerEngaged and not petEngaged then -- Both Idle
+                local newSet = safe_get(currentMatrix, engageStatus, 'masterPet', layer) or {}
+                if newSet.priority then
+                    priorityLayer = newSet
+                end
+
+                set = combine_safe(set, newSet)
                 setName = ':' .. state.matrixName .. '.' .. engageStatus .. '.pet.' .. layer
             end
         end
@@ -922,6 +933,14 @@ local function resolve_gear(state)
                 engageStatus ..
                 '.' .. petCombo .. '.' .. (pmSet == safe_get(petMatrix, engageStatus, petCombo, pmLayer) and pmLayer)
         end
+    end
+
+    -------------------------------------------------
+    -- PRIORITY MATRIX LAYER
+    -------------------------------------------------
+    if priorityLayer then
+        set = combine_safe(set, priorityLayer)
+        priorityLayer = nil
     end
 
     -------------------------------------------------
@@ -1601,10 +1620,10 @@ function self_command(cmd)
         elseif which == 'weaponlock' then
             current_state.weaponLock = not current_state.weaponLock
             if current_state.weaponLock then
-                disable('main', 'sub') -- ✅ lock both weapon slots
+                disable('main', 'sub')
                 windower.add_to_chat(122, '[WeaponLock] ON - Weapon slots locked')
             else
-                enable('main', 'sub') -- ✅ unlock them again
+                enable('main', 'sub')
                 windower.add_to_chat(122, '[WeaponLock] OFF - Weapon slots unlocked')
             end
         elseif which == 'automaneuver' then
@@ -1617,7 +1636,6 @@ function self_command(cmd)
                 automan.retry_counts = {}
             end
         end
-        -- TODO: Specific to autoDeploy logic to trigger Deploy action. Probably not necessary, could wrap into autodeploy logic
     elseif c == '__auto_deploy_fire' then
         windower.send_command('input /pet "Deploy" <t>')
     end

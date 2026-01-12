@@ -254,13 +254,14 @@ function get_sets()
 
     -- Layer names Acc, TP, Regen etc are an example, layers can be uniquely named.
     -- It is important that both idle and engaged have the same layer options
+    -- Passing priority = true will cause that matrixLayer to overwrite the active petMatrixLayer
     matrices.gear_matrix.idle = {
-        masterPet = { Acc = {}, TP = {}, Regen = {}, Ranged = {} } -- Master & Pet are Idle
+        masterPet = { Acc = { head = 'Herculean Helm', priority = true }, TP = {}, Regen = {}, Ranged = {} } -- Master & Pet are Idle
     }
-    matrices.gear_matrix.engaged = {                               -- If Priority value is TRUE, the layer will take priority over petmatrix layers
-        master = { Acc = {}, TP = {}, Regen = {}, DT = {} },       -- Master is Engaged, pet is Idle
-        pet = { Acc = {}, TP = {}, Regen = {}, DT = {} },          -- Master is idle, pet is engaged
-        masterPet = { Acc = {}, TP = {}, Regen = {}, DT = {} }     -- Master & Pet are engaged
+    matrices.gear_matrix.engaged = {                                                                     -- If Priority value is TRUE, the layer will take priority over petmatrix layers
+        master = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                             -- Master is Engaged, pet is Idle
+        pet = { Acc = {}, TP = {}, Regen = {}, DT = {} },                                                -- Master is idle, pet is engaged
+        masterPet = { Acc = {}, TP = {}, Regen = {}, DT = {} }                                           -- Master & Pet are engaged
     }
 
     -- If a petMatrix is supplied, additional pet specific layers can be applied on top
@@ -270,7 +271,7 @@ function get_sets()
         Valor_Valor = { Tank = {}, DD = {}, TurtleTank = {} },
         Valor_Sharp = { Tank = {}, DD = {}, RangedDD = {} },
         Valor_Harle = { Tank = {}, DD = {}, Heal = {} },
-        Sharp_Sharp = { Ranged = {} },
+        Sharp_Sharp = { Ranged = { head = 'Nyame Helm' } },
         Soul_Storm = { SoloSupport = {}, Heal = {} },
         Spirit_Storm = { BLM = {} },
         Storm_Storm = { RDMSupport = {} },
