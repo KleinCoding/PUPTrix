@@ -1,23 +1,26 @@
 -- Puppetmaster helper library
 
 -- Accessing windower data
-local res = require('resources')
+local res                            = require('resources')
 
 -- Text renderer for HUD
-local texts = require('texts')
+local texts                          = require('texts')
+
+-- Instantiate const for HUD
+local hud                            = nil
 
 -----------------------------------------
 -- Hook booleans --
 -----------------------------------------
 local target_change_event_registered = false
-local prerender_registered = false
-local zone_change_hook_registered = false
-local incoming_text_hook_registered = false
+local prerender_registered           = false
+local zone_change_hook_registered    = false
+local incoming_text_hook_registered  = false
 
 -----------------------------------------
 -- CONSTS
 -----------------------------------------
-local Towns         = {
+local Towns                          = {
     [246] = "Ru'Lude Gardens",
     [236] = "Port Bastok",
     [50]  = "Port Jeuno",
@@ -26,7 +29,7 @@ local Towns         = {
     [53]  = "Rabao",
 }
 
-local MANEUVER_MAP  = {
+local MANEUVER_MAP                   = {
     ["Fire Maneuver"]    = "Fire",
     ["Water Maneuver"]   = "Water",
     ["Wind Maneuver"]    = "Wind",
@@ -37,7 +40,7 @@ local MANEUVER_MAP  = {
     ["Dark Maneuver"]    = "Dark",
 }
 
-local PUP_HEAD_MAP  = {
+local PUP_HEAD_MAP                   = {
     ["Harlequin Head"]    = "Harle",
     ["Valoredge Head"]    = "Valor",
     ["Sharpshot Head"]    = "Sharp",
@@ -46,11 +49,21 @@ local PUP_HEAD_MAP  = {
     ["Spiritreaver Head"] = "Spirit",
 }
 
-local PUP_FRAME_MAP = {
+local PUP_FRAME_MAP                  = {
     ["Harlequin Frame"]  = "Harle",
     ["Valoredge Frame"]  = "Valor",
     ["Sharpshot Frame"]  = "Sharp",
     ["Stormwaker Frame"] = "Storm",
+}
+
+local DynamicLists                   = {
+    Matrices               = { 'gear_matrix' },
+    MatrixLayers           = { 'None' },
+    PetMatrixCombos        = { 'None' },
+    PetMatrixLayers        = { 'None' },
+    PetMatrixLayersByCombo = { 'None' },
+    CustomLayers           = { 'None' },
+    HudViews               = { 'Full', 'SetsOnly', 'Condensed' },
 }
 
 -- TODO: Expand Debug mode. 'Off' 'Light' and 'Full' settings.
@@ -67,7 +80,7 @@ local PUP_FRAME_MAP = {
 -----------------------------------------
 -- State
 -----------------------------------------
-CURRENT_STATE       = {
+CURRENT_STATE                        = {
     -- Matrix & Matrix Layers state
     matrixName     = 'gear_matrix', -- the key in global `matrices` to use
     matrixLayer    = 'None',        -- key for active matrix layer
@@ -87,24 +100,38 @@ CURRENT_STATE       = {
     currentZoneId  = 'None', -- For managing Town sets
 }
 
-PLAYER_STATE        = {
+PLAYER_STATE                         = {
     ps_player_status = 'Idle', -- Current player state - Idle, Engaged
     ps_pet_status    = 'None', -- Current pet state - None, Idle, Engaged
     ps_pet_type      = '',     -- Current Pet Type - Valor_Valor, Sharp_Valor, Storm_Storm, etc.
     ps_pet_hp        = 0,
 }
 
-HUD_STATE           = {
-    hud_view              = 'Full', -- current HUD layout mode - Full, SetsOnly, Condensed
-    hud_set_name          = 'None', -- Text string of current sets, for HUD display
-    hud_border_alpha      = 175,    -- Border transparency (0–255)
-    hud_bg_alpha          = 80,     -- Background transparency (0–255)
-    hud_label_width       = 20,     -- Fixed label width for alignment
-    hud_text_alpha        = 150,
-    hud_text_stroke_alpha = 125,
+HUD_STATE                            = { -- TODO: Many of these values should be customizable with VARs file
+    hud_view     = 'Full',               -- current HUD layout mode - Full, SetsOnly, Condensed
+    hud_set_name = 'None',               -- Text string of current sets, for HUD display
+    hud_settings = {                     -- Should probably be separated once HUD is moved to HUD file
+        hud_border_alpha      = 175,     -- Border transparency (0–255)
+        hud_bg_alpha          = 80,      -- Background transparency (0–255)
+        hud_label_width       = 20,      -- Fixed label width for alignment
+        hud_text_alpha        = 150,
+        hud_text_stroke_alpha = 125,
+        pos                   = { x = 2200, y = 700 },
+        bg                    = { alpha = 150, red = 20, green = 20, blue = 20 },
+        flags                 = { draggable = true },
+        text                  = {
+            font = 'Consolas',
+            size = 10,
+            stroke = { width = 1, alpha = 100 },
+            red = 255,
+            green = 255,
+            blue = 255,
+            alpha = 150
+        },
+    }
 }
 
-AUTOMANEUVER_STATE  = {
+AUTOMANEUVER_STATE                   = {
     am_toggle_on       = false,
     am_queue           = {},  -- FIFO of elements to reapply
     am_last_attempt    = 0,   -- os.time() of last attempt (player or script)
@@ -118,7 +145,7 @@ AUTOMANEUVER_STATE  = {
     am_max_retries     = 3,   -- TODO: Take from VARs
 }
 
-AUTODEPLOY_STATE    = {
+AUTODEPLOY_STATE                     = {
     ad_toggle_on              = false,
     ad_last_deploy_timestamp  = 0,
     ad_last_engaged_target_id = 0,
@@ -127,7 +154,7 @@ AUTODEPLOY_STATE    = {
     ad_deploy_delay           = 2.5, -- TODO: VARs
 }
 
-AUTOENMITY_STATE    = {
+AUTOENMITY_STATE                     = {
     ae_toggle_on = false,
     ae_window_open = false,
     ae_tracked_ability = nil,    -- 'Strobe' or 'Flashbulb'
@@ -141,7 +168,7 @@ AUTOENMITY_STATE    = {
     ae_equip_window = 3 -- TODO: VARs
 }
 
-AUTOREPAIR_STATE    = {
+AUTOREPAIR_STATE                     = {
     ar_active_threshold       = 0,                     -- AUTOREPAIR_STATE.ar_thresholds = {0, 20, 40, 55, 70}
     ar_cooldown_upgrades      = 5,                     -- 0–5; each level reduces cooldown by 3 s -- TODO: Make settings const
     ar_last_attempt           = 0,                     -- timestamp of last repair attempt (whether success or fail)
@@ -156,7 +183,7 @@ AUTOREPAIR_STATE    = {
     ar_spamguard_lockout      = 3.5 -- TODO: VARs
 }
 
-AUTOPETWS_STATE     = {
+AUTOPETWS_STATE                      = {
     apw_toggle_on = false,
     apw_set_active = false,
     apw_timer = 0,
@@ -279,35 +306,6 @@ local function can_player_act()
     return true
 end
 
------------------------------------------
--- HUD Setup -- TODO: Move to its own file
------------------------------------------
-local hud_settings = {
-    pos   = { x = 2200, y = 700 },
-    bg    = { alpha = HUD_STATE.hud_bg_alpha, red = 20, green = 20, blue = 20 },
-    flags = { draggable = true },
-    text  = {
-        font = 'Consolas',
-        size = 10,
-        stroke = { width = 1, alpha = HUD_STATE.hud_text_stroke_alpha },
-        red = 255,
-        green = 255,
-        blue = 255,
-        alpha = HUD_STATE.hud_text_alpha
-    },
-}
-local hud = nil
-
-local DynamicLists = {
-    Matrices               = { 'gear_matrix' },
-    MatrixLayers           = { 'None' }, -- MatrixLayer list includes None
-    PetMatrixCombos        = { 'None' },
-    PetMatrixLayers        = { 'None' }, -- PetMatrixLayer list includes None
-    PetMatrixLayersByCombo = {},
-    CustomLayers           = { 'None' },
-    HudViews               = { 'Full', 'SetsOnly', 'Condensed' },
-}
-
 local function format_count_of_choices(cur, list)
     if not list or #list == 0 then
         return tostring(cur or "?")
@@ -338,15 +336,15 @@ local function format_count_of_choices(cur, list)
 end
 
 
-local function align_label(label, value) -- Label alignment
-    return string.format("%-" .. HUD_STATE.hud_label_width .. "s %s", label .. ":", value or "")
-end
-
-
 
 -----------------------------------------
 -- HUD Renderer
 -----------------------------------------
+
+local function align_label(label, value) -- Label alignment
+    return string.format("%-" .. HUD_STATE.hud_settings.hud_label_width .. "s %s", label .. ":", value or "")
+end
+
 local function hud_update()
     if not hud then return end
     local lines = {}
@@ -392,8 +390,8 @@ local function hud_update()
 
         -- Matrix name
         local matrix_idx = 1
-        for i, v in ipairs(DynamicLists.Matrices) do
-            if v == CURRENT_STATE.matrixName then
+        for i, matrixName in ipairs(DynamicLists.Matrices) do
+            if matrixName == CURRENT_STATE.matrixName then
                 matrix_idx = i; break
             end
         end
@@ -1319,11 +1317,11 @@ end
 -----------------------------------------
 function lib_init()
     if not hud then
-        hud = texts.new(hud_settings)
+        hud = texts.new(HUD_STATE.hud_settings)
         hud:bg_visible(true)
         hud:bg_color(30, 30, 30)
-        hud:bg_alpha(HUD_STATE.hud_bg_alpha)
-        hud:stroke_color(200, 200, 200, HUD_STATE.hud_border_alpha)
+        hud:bg_alpha(HUD_STATE.hud_settings.hud_bg_alpha)
+        hud:stroke_color(200, 200, 200, HUD_STATE.hud_settings.hud_border_alpha)
         hud:color(255, 255, 255, 255)
     end
 
@@ -1509,7 +1507,7 @@ end
 -----------------------------------------
 -- User Commands
 -----------------------------------------
--- Used to cycle cyclable commands - autoRepair command
+-- Used to cycle cyclable commands - autoRepair, matrices, layers etc
 local function cycle(field, list)
     if not list or #list == 0 then return end
     local idx = 1

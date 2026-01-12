@@ -104,7 +104,7 @@ function get_sets()
         back = { name = "Visucius's Mantle", augments = { 'Pet: Acc.+20 Pet: R.Acc.+20 Pet: Atk.+20 Pet: R.Atk.+20', 'Accuracy+20 Attack+20', 'Pet: Attack+10 Pet: Rng.Atk.+10', '"Dbl.Atk."+10', 'Damage taken-5%', } },
     }
 
-    customSets.overdrive = {
+    customSets.overdriveVEVE = {
         main = { name = "Ohrmazd", augments = { 'Pet: Accuracy+20 Pet: Rng. Acc.+20', 'Pet: Phys. dmg. taken -4%', 'Pet: STR+13 Pet: DEX+13 Pet: VIT+13', } },
         ammo = "Automat. Oil +3",
         head = { name = "Taeon Chapeau", augments = { 'Pet: Accuracy+23 Pet: Rng. Acc.+23', 'Pet: "Dbl. Atk."+5', 'Pet: Damage taken -4%', } },
@@ -121,7 +121,7 @@ function get_sets()
         back = { name = "Visucius's Mantle", augments = { 'Pet: Acc.+20 Pet: R.Acc.+20 Pet: Atk.+20 Pet: R.Atk.+20', 'Accuracy+20 Attack+20', 'Pet: Attack+10 Pet: Rng.Atk.+10', 'Pet: Haste+10', 'Pet: Damage taken -5%', } },
     }
 
-    customSets.overdriveSS = {
+    customSets.overdriveSSSS = {
         main = { name = "Xiucoatl", augments = { 'Path: C', } },
         ammo = "Automat. Oil +3",
         head = "Kara. Cappello +2",
@@ -297,6 +297,39 @@ function get_sets()
         Storm_Storm = {},
     }
 
+    -------------------Matrix 2---------------------------------
+
+    matrices.overdrive_matrix = {}
+    matrices.overdrive_matrix.petMatrix = {}
+    matrices.overdrive_matrix.baseSet = customSets.base
+
+    matrices.overdrive_matrix.idle = {    -- Master & Pet both idle
+        masterPet = {}                    -- Master & Pet are Idle
+    }
+    matrices.overdrive_matrix.engaged = { -- Master OR Pet are engaged                                                           -- If Priority value is TRUE, the layer will take priority over petmatrix layers
+        master = {},                      -- Master is Engaged, pet is Idle
+        pet = {},                         -- Master is idle, pet is engaged
+        masterPet = {}                    -- Master & Pet are engaged
+    }
+
+    matrices.overdrive_matrix.petMatrix.idle = { -- Pet is Idle
+        Valor_Valor = { Overdrive = customSets.overdriveVEVE },
+        -- Valor_Sharp = { Overdrive = customSets.overdriveVEVS },
+        Sharp_Sharp = { Overdrive = customSets.overdriveSSSS }
+    }
+
+    matrices.overdrive_matrix.petMatrix.engaged = { -- Pet is Engaged
+        Valor_Valor = { Overdrive = customSets.overdriveVEVE },
+        -- Valor_Sharp = { Overdrive = customSets.overdriveVEVS },
+        Sharp_Sharp = { Overdrive = customSets.overdriveSSSS }
+    }
+
+    matrices.overdrive_matrix.petMatrix.weaponskills = { -- If a WS set is provided and autoPetWS toggle is on, WS set will be determined by active puppet type
+        Valor_Valor = {},
+        Valor_Sharp = customSets.rangerPetWS,
+        Sharp_Sharp = customSets.rangerPetWS,
+    }
+
     ------------------------------------------------------------
     -------------------Custom Layers----------------------------
     ------------------------------------------------------------
@@ -308,7 +341,7 @@ function get_sets()
     sets.layers.CustomLayers.aMasterDTDEF = customSets.masterDTDEF
     sets.layers.CustomLayers.aMasterDTHP = customSets.tanking
     sets.layers.CustomLayers.dHealing = customSets.healing
-    sets.layers.CustomLayers.bOverdriveVE = customSets.overdrive
+    sets.layers.CustomLayers.bOverdriveVE = customSets.overdriveVE
     sets.layers.CustomLayers.cOverdriveSS = customSets.overdriveSS
 
     ------------------------------------------------------------
