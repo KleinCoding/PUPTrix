@@ -42,21 +42,6 @@ local MANEUVER_MAP            = {
     ["Dark Maneuver"]    = "Dark",
 }
 
--- TODO: These are wrong.
-local BLOCKING_DEBUFF_IDS     = {
-    [2] = true,  -- Sleep
-    [3] = true,  -- Sleep II
-    [4] = true,  -- Sleep III
-    [5] = true,  -- Sleepga
-    [6] = true,  -- Sleepga II
-    [7] = true,  -- Nightmare (sleep)
-    [10] = true, -- Stun
-    [13] = true, -- Charm
-    [16] = true, -- Amnesia
-    [17] = true, -- Petrification
-    [28] = true, -- Terror
-}
-
 local PUP_HEAD_MAP            = {
     ["Harlequin Head"]    = "Harle",
     ["Valoredge Head"]    = "Valor",
@@ -135,9 +120,6 @@ local pet_ws_active = false
 
 -- TODO: Pet Casting Set Support
 
--- TODO: Using Repair manually breaks repair CD tracking
-
-
 -- TODO: HUD updates. Mini, Lite, and Full modes. Mini only shows sets and abbreviated modes (if on), Lite shows Matrix/Layers & Sets and shows modes (if on). Full shows all data and shows hotkeys
 -- Should do Pet Type tracking next. Determine Pet Head/Body and store in state. Incorporate into PetMatrix determination and Pet WS set
 
@@ -189,13 +171,13 @@ local current_state = {              -- TODO: Break this block into multiple sta
     autoPetWS              = {
         active = false,
         timer = 0,
-        lockout = 0 --TODO: make a user config, and add 'overdriveLockout' for OD scenarios
+        lockout = 0 --TODO: make a user config, and add 'overdriveLockout' for OD scenarios TODO: If lockout is 0, disable lockout logic/keep set on
     },
 
     -- Utility Toggles
-    debugMode              = false,
-    weaponLock             = true,
-    autoEnmity             = false,
+    debugMode              = false, --TODO: Derive initial value from VARS
+    weaponLock             = true,  --TODO: Derive initial value from VARS
+    autoEnmity             = false, --TODO: Derive initial value from VARS
 
     -- Misc
     currentZoneId          = 'None', -- For managing Town sets
@@ -211,7 +193,7 @@ local automan = {
     pending_to             = 4,   -- seconds allowed for buff to appear after issuing
 
     manual_suppress_until  = 0,   -- timestamp; while now < this, ignore buff-loss queues
-    manual_suppress_window = 4,   -- seconds to ignore loss events after a manual JA
+    manual_suppress_window = 3,   -- seconds to ignore loss events after a manual JA
 
     retry_counts           = {},  -- { ["Fire"] = 1, ["Water"] = 3, ... }
     max_retries            = 3,
@@ -295,21 +277,6 @@ local function update_pet_hp() -- Updates pet HP to state
     end
 end
 
-local function player_has_blocking_debuff() --- Check if the player currently has any blocking debuff -- TODO: NOT WORKING
-    local player = windower.ffxi.get_player()
-    if not player or not player.buffs then return false end
-
-    for _, buff_id in ipairs(player.buffs) do
-        if BLOCKING_DEBUFF_IDS[buff_id] then
-            local buff_name = res.buffs[buff_id] and res.buffs[buff_id].en or ("BuffID " .. buff_id)
-            debug_chat(string.format("[DebuffCheck] Blocking debuff active: %s (ID %d)", buff_name, buff_id))
-            return true
-        end
-    end
-
-    return false
-end
-
 local function puppet_is_engaged() -- Returns true if the automaton is already engaged
     local puppet = windower.ffxi.get_mob_by_target('pet')
     if not puppet or not puppet.valid_target then return false end
@@ -330,6 +297,19 @@ local function get_pet_ws_set()
     return currentMatrix.petMatrix.weaponskills[current_state.petType]
 end
 
+-- This is maybe a bit heavy to check every frame. Cache it? every ~0.2s?
+local function can_player_act()
+    if midaction() then return false end
+
+    if not player or player.hpp == 0 then return false end
+
+    if buffactive['Stun'] or buffactive['Sleep'] or buffactive['Petrification']
+        or buffactive['Terror'] or buffactive['Charm'] or buffactive['Amnesia'] or buffactive['Invisible'] then
+        return false
+    end
+
+    return true
+end
 -----------------------------------------
 -- HUD Setup -- TODO: Move to its own file
 -----------------------------------------
@@ -529,7 +509,6 @@ local function check_auto_repair() -- TODO: Oil check is broken, JA block need c
     -- spam guard
     local now = os.time()
     if now - (current_state.lastRepairAttempt or 0) < AUTOREPAIR_SPAM_GUARD then return end
-    current_state.lastRepairAttempt = now
 
     -- Cooldown check --
     local cd = get_repair_cooldown()
@@ -556,15 +535,14 @@ local function check_auto_repair() -- TODO: Oil check is broken, JA block need c
         return
     end
 
-    -- Check for JA blocking debuffs
-    --if player_has_blocking_debuff() then
-    -- debug_chat("[AutoRepair] Player incapacitated. Holding repair attempts.")
-    -- return
-    --end
-
-    -- TODO: Add check if player can perform an action (i.e is not already performing an action)
+    if not can_player_act() then
+        debug_chat('[AutoRepair] Player Unable To Act')
+        current_state.lastRepairAttempt = now
+        return
+    end
 
     debug_chat(string.format('[AutoRepair] Repair triggered (HP %.1f%% <= %d%%, %.1f yalms)', hp, th, distance))
+    current_state.lastRepairAttempt = now
     windower.chat.input('/ja "Repair" <me>')
 end
 
@@ -614,8 +592,8 @@ end
 
 local function enqueue_maneuver(element)
     if not element then return end
-    -- Keep a single-slot queue. Any new request replaces the previous.
-    automan.queue = { element }
+    
+    automan.queue[#automan.queue + 1] = element
     debug_chat(string.format("[AutoManeuver] Queued %s maneuver for reapply", element))
 end
 
@@ -633,17 +611,10 @@ local function can_attempt_maneuver()
     if automan.pending then return false end
     local now = os.time()
     if (now - automan.last_use) < automan.cooldown then return false end
+
     -- Ensure player is alive and pet is active
     if not player or player.status == 'Dead' then return false end
     if not pet or not pet.isvalid then return false end
-
-    -- Check for JA blocking debuffs
-    --if player_has_blocking_debuff() then
-    --debug_chat("[AutoManeuver] Player incapacitated. Holding maneuver attempts.")
-    --return
-    --end
-
-    -- TODO: Add check if player can perform actions
 
     return true
 end
@@ -673,21 +644,24 @@ local function auto_maneuver_tick()
         return
     end
 
-    -- If we have a pending attempt, check for timeout
+    -- Abort if player can't act
+    if not can_player_act() then
+        return
+    end
+
+    -- Handle pending attempt
     if automan.pending then
         local now = os.time()
 
         if now - automan.pending.issued_at > automan.pending_to then
             local el = automan.pending.element
-            automan.pending = nil
 
-            -- increment failure count
             local count = (automan.retry_counts[el] or 0) + 1
             automan.retry_counts[el] = count
 
             if count >= automan.max_retries then
                 debug_chat(string.format("[AutoManeuver] %s failed %d times - giving up.", el, count))
-                automan.queue = {}
+                dequeue_maneuver(automan.pending.element)
                 automan.retry_counts[el] = nil
             else
                 debug_chat(string.format("[AutoManeuver] %s timeout (attempt %d/%d) - requeueing",
@@ -872,7 +846,7 @@ local function build_custom_layers() -- TODO: Order of custom layers is alphabet
 end
 
 -----------------------------------------
--- Gear Resolver -- TODO: Handle Maneuver, ability, and spell gearswaps here as well so layer names happen in hud
+-- Gear Resolver -- TODO: State value for Pre/postcast to get setnames for JAs, spells, etc displayed in the HUD
 -----------------------------------------
 local function resolve_gear(state)
     local set = {}
@@ -1017,7 +991,7 @@ function pet_status_change(new, old)
         current_state.petStatus = new
     end
 
-    -- TODO: This logic can be movbed to utility function, it is repeated in pet_change
+    -- TODO: This logic can be moved to utility function, it is repeated in pet_change
     local petHead = pet.head
     local petFrame = pet.frame
     local shorthandHead = PUP_HEAD_MAP[petHead]
@@ -1110,9 +1084,9 @@ function precast(spell, action, spellMap, eventArgs)
 
         -- AutoManeuver/manual sync handling
         local now                     = os.time()
+        dequeue_maneuver(automan.pending.element)
         automan.last_use              = now
         automan.pending               = nil
-        automan.queue                 = {}
         automan.manual_suppress_until = now + automan.manual_suppress_window
         debug_chat(string.format(
             "[PUPTrix AutoManeuver] %s detected",
@@ -1589,6 +1563,9 @@ function self_command(cmd)
             current_state.autoDeploy = not current_state.autoDeploy
             windower.add_to_chat(122, '[AutoDeploy] ' .. (current_state.autoDeploy and 'On' or 'Off'))
         elseif which == 'autopetenmity' then
+            current_state.autoEnmity = not current_state.autoEnmity
+            windower.add_to_chat(122, '[AutoPetEnmity] ' .. (current_state.autoEnmity and 'On' or 'Off'))
+
             -- Clear any pending when disabling
             if not current_state.autoEnmity then
                 auto_enmity_state = {
@@ -1597,9 +1574,9 @@ function self_command(cmd)
                     timer = 0
                 }
             end
-            current_state.autoEnmity = not current_state.autoEnmity
-            windower.add_to_chat(122, '[AutoPetEnmity] ' .. (current_state.autoEnmity and 'On' or 'Off'))
         elseif which == 'autopetws' then
+            current_state.autoPetWSToggle = not current_state.autoPetWSToggle
+            windower.add_to_chat(122, '[AutoPetWS] ' .. (current_state.autoPetWSToggle and 'On' or 'Off'))
             -- Clear any pending when disabling
             if not current_state.autoPetWSToggle then
                 autoPetWS = {
@@ -1608,8 +1585,6 @@ function self_command(cmd)
                     lockout = 0
                 }
             end
-            current_state.autoPetWSToggle = not current_state.autoPetWSToggle
-            windower.add_to_chat(122, '[AutoPetWS] ' .. (current_state.autoPetWSToggle and 'On' or 'Off'))
         elseif which == 'debug' then
             current_state.debugMode = not current_state.debugMode
             windower.add_to_chat(122, '[Debug] ' .. (current_state.debugMode and 'On' or 'Off'))
@@ -1624,13 +1599,13 @@ function self_command(cmd)
             end
         elseif which == 'automaneuver' then
             current_state.autoManeuver = not current_state.autoManeuver
+            windower.add_to_chat(122, '[AutoManeuver] ' .. (current_state.autoManeuver and 'On' or 'Off'))
             -- Clear any pending when disabling
             if not current_state.autoManeuver then
                 automan.queue = {}
                 automan.pending = nil
                 automan.retry_counts = {}
             end
-            windower.add_to_chat(122, '[AutoManeuver] ' .. (current_state.autoManeuver and 'On' or 'Off'))
         end
         -- TODO: Specific to autoDeploy logic to trigger Deploy action. Probably not necessary, could wrap into autodeploy logic
     elseif c == '__auto_deploy_fire' then
