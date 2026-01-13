@@ -831,8 +831,8 @@ local function resolve_gear(state)
     local setName = ''
     local priorityLayer = nil
 
-    local playerEngaged = state.playerStatus == 'Engaged'
-    local petEngaged = state.petStatus == 'Engaged'
+    local playerEngaged = PLAYER_STATE.ps_player_status == 'Engaged'
+    local petEngaged = PLAYER_STATE.ps_pet_status == 'Engaged'
     local engageStatus = (playerEngaged or petEngaged) and 'engaged' or 'idle'
 
     local currentMatrix = safe_get(_G, 'matrices', state.matrixName)
