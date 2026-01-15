@@ -897,8 +897,8 @@ local function resolve_gear()
     -------------------------------------------------
     local petMatrix = currentMatrix and currentMatrix.petMatrix or nil
     if petMatrix and MATRIX_STATE.petMatrixCombo and MATRIX_STATE.petMatrixCombo ~= 'None' then
-        local petCombo = state.petMatrixCombo
-        local pmLayer = state.petMatrixLayer or 'None'
+        local petCombo = MATRIX_STATE.petMatrixCombo
+        local pmLayer = MATRIX_STATE.petMatrixLayer or 'None'
 
         local pmSet = safe_get(petMatrix, engageStatus, petCombo, pmLayer)
         if pmSet and pmSet ~= 'None' then
