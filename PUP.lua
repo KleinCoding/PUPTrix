@@ -35,7 +35,7 @@ function get_sets()
 
     Relic_Pitre = {}
     Relic_Pitre.Head_PRegen = "Pitre Taj +2"       --Enhances Optimization
-    Relic_Pitre.Body_PTP = "Pitre Tobe +3"         --Enhances Overdrive
+    Relic_Pitre.Body_PTP = "Pitre Tobe +4"         --Enhances Overdrive
     Relic_Pitre.Hands_WSD = "Pitre Dastanas +3"    --Enhances Fine-Tuning
     Relic_Pitre.Legs_PMagic = "Pitre Churidars +2" --Enhances Ventriloquy
     Relic_Pitre.Feet_PMagic = "Pitre Babouches +1" --Role Reversal
@@ -298,7 +298,7 @@ function get_sets()
 
     matrices.gear_matrix.petMatrix.weaponskills = { -- If a WS set is provided and autoPetWS toggle is on, WS set will be determined by active puppet type
         Valor_Valor = {},
-        Valor_Sharp = {},
+        Valor_Sharp = customSets.rangerPetWS,
         Valor_Harle = {},
         Sharp_Sharp = customSets.rangerPetWS,
         Soul_Storm = {},
