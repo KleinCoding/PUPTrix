@@ -1636,7 +1636,6 @@ function self_command(cmd)
             KITING_STATE.kiting_on = not KITING_STATE.kiting_on
             windower.add_to_chat(122, '[Kiting] ' .. (KITING_STATE.kiting_on and 'On' or 'Off'))
         end
-        end
     elseif c == '__auto_deploy_fire' then
         windower.send_command('input /pet "Deploy" <t>')
     end
