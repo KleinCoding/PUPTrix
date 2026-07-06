@@ -202,6 +202,10 @@ AUTOPETWS_STATE                      = {
     apw_ws_window = false,  -- UNUSED
 }
 
+KITING_STATE = {
+    kiting_on = false,
+}
+
 -----------------------------------------
 -- Utility Functions
 -----------------------------------------
@@ -964,6 +968,7 @@ local function resolve_gear()
         end
     end
 
+    set = apply_kiting(set)
 
     debug_chat('[PUPTRix Gear] Set: ' .. setName .. '')
     return set, setName
@@ -1627,10 +1632,20 @@ function self_command(cmd)
                 AUTOMANEUVER_STATE.am_pending = nil
                 AUTOMANEUVER_STATE.am_retry_counts = {}
             end
+        elseif which == 'kiting' then
+            KITING_STATE.kiting_on = not KITING_STATE.kiting_on
+            windower.add_to_chat(122, '[Kiting] ' .. (KITING_STATE.kiting_on and 'On' or 'Off'))
         end
     elseif c == '__auto_deploy_fire' then
         windower.send_command('input /pet "Deploy" <t>')
     end
 
     equip_and_update()
+end
+
+function apply_kiting(base_set)
+    if KITING_STATE.kiting_on and sets.Kiting then
+        base_set = set_combine(base_set, sets.Kiting)
+    end
+    return base_set
 end
