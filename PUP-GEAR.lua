@@ -434,4 +434,12 @@ function GET_PUP_SETS()
         body = { name = "Herculean Vest", augments = { '"Cure" potency +6%', 'DEX+3', 'Phalanx +2', 'Accuracy+4 Attack+4', } },
         feet = { name = "Herculean Boots", augments = { '"Conserve MP"+3', 'Enmity-1', 'Phalanx +5', 'Accuracy+13 Attack+13', } },
     }
+
+    USER_SETS.petFC = {
+        head = { name = "Naga Somen", augments = { 'Pet: MP+80', 'Automaton: "Cure" potency +4%', 'Automaton: "Fast Cast"+3', } },
+        body = { name = "Naga Samue", augments = { 'Pet: MP+80', 'Automaton: "Cure" potency +4%', 'Automaton: "Fast Cast"+3', } },
+        hands = { name = "Naga Tekko", augments = { 'Pet: MP+80', 'Automaton: "Cure" potency +4%', 'Automaton: "Fast Cast"+3', } },
+        legs = "Pitre Churidars +3",
+        feet = { name = "Naga Kyahan", augments = { 'Pet: MP+80', 'Automaton: "Cure" potency +4%', 'Automaton: "Fast Cast"+3', } },
+    }
 end

@@ -106,8 +106,8 @@ function get_sets()
     matrices.overdrive_matrix.petMatrix = {}
     matrices.overdrive_matrix.baseSet = USER_SETS.base
 
-    matrices.overdrive_matrix.idle = { -- Master & Pet both idle
-        masterPet = {}                 -- Master & Pet are Idle
+    matrices.overdrive_matrix.idle = {              -- Master & Pet both idle
+        masterPet = { Healing = USER_SETS.healing } -- Master & Pet are Idle
     }
 
     matrices.overdrive_matrix.engaged = { -- Master OR Pet are engaged
@@ -119,7 +119,7 @@ function get_sets()
     matrices.overdrive_matrix.petMatrix.idle = { -- Pet is Idle
         Valor_Valor = { Overdrive = USER_SETS.overdriveVEVE },
         Sharp_Sharp = { Overdrive = USER_SETS.overdriveSSSS },
-        Storm_Storm = {}
+        Storm_Storm = { Overdrive = USER_SETS.enmity }
     }
 
     matrices.overdrive_matrix.petMatrix.engaged = { -- Pet is Engaged
@@ -203,8 +203,7 @@ function get_sets()
     ------------------------------------------------------------
     ------------------- Special Pet Layers ---------------------
     ------------------------------------------------------------
-    sets.precast.Pet = {}
-    sets.precast.Pet.FastCast = {} -- Only applied by Deploy while AutoPetCasting is enabled
+    sets.precast.Pet = USER_SETS.petFC -- Only applied by Deploy while AutoPetCasting is enabled
 
     sets.midcast.Pet = {}
     sets.midcast.Pet["Enfeebling Magic"] = USER_SETS.petMACC
